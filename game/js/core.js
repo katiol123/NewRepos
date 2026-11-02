@@ -353,7 +353,6 @@ async function moveUnit(u, path) {
     const t = tile(s.x, s.y);
     if (t.burn > 0) { await damageUnit(u, 2, null, 'fire'); if (u.dead) break; }
     if (u.st.concealed && u.side === 'coven' && isLit(u.x, u.y)) reveal(u, 'вышел на свет');
-    if (u.st.concealed) for (const e of alive(foe(u.side))) if (Math.max(Math.abs(e.x - u.x), Math.abs(e.y - u.y)) <= 1) { reveal(u, 'враг вплотную'); break; }
     // если рядом стоит сокрытый враг — он раскрыт
     for (const e of alive(foe(u.side))) if (e.st.concealed && Math.max(Math.abs(e.x - u.x), Math.abs(e.y - u.y)) <= 1) reveal(e, 'враг вплотную');
     // Бдение
@@ -633,6 +632,8 @@ async function startTurn(side) {
 
 function endTurn() {
   if (G.winner) return;
+  // нельзя затаиться вплотную к врагу
+  for (const u of alive(G.side)) if (u.st.concealed && alive(foe(u.side)).some(e => Math.max(Math.abs(e.x - u.x), Math.abs(e.y - u.y)) <= 1)) reveal(u, 'не удалось затаиться вплотную к врагу');
   for (const u of alive(G.side)) { u.guard = Math.min(u.ap, MAX_AP) * GUARD_PER_AP; if (u.guard) FX.float(u.x, u.y, 'Стойкость +' + u.guard, '#9fc4ff', 0.75); u.ap = 0; }
   // Вызов действует один ход врага
   for (const u of alive(G.side)) u.st.taunt = null;
