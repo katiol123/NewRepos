@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Пепельная Литания</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="vignette"></div><div id="grain"></div><div id="menuShade"></div>
+
+<!-- ================= МЕНЮ ================= -->
+<div id="menu">
+  <div class="m-top">
+    <div class="m-orn"></div>
+    <h1 class="m-title">Пепельная Литания</h1>
+    <div class="m-sub">тактика тёмного средневековья · пролог: «Алтарь Пустой Луны»</div>
+    <div class="m-orn"></div>
+  </div>
+  <div class="m-lore">В руинах Собора Седьмой Свечи сходятся двое. Орден пришёл освятить алтарь, Ковен — пробудить то, что под ним спит.
+    Кто удержит алтарь пять рассветов — или вырежет врага до последнего — тот и напишет конец литании.</div>
+  <div class="m-cards">
+    <div class="card c-order" data-mode="order">
+      <canvas data-emb="order:bastion" width="150" height="150"></canvas>
+      <div class="card-t">Орден Пепельного Света</div>
+      <div class="card-d">Свет, сталь и вера. <b>+10 к меткости на свету.</b> Ульта «Рассвет» прогоняет тьму.</div>
+      <div class="card-b">Играть за Орден</div>
+    </div>
+    <div class="card c-spec" data-mode="spectator">
+      <div class="spec-eye">
+        <canvas data-emb="order:priest" width="110" height="150"></canvas>
+        <canvas data-emb="coven:priest" width="110" height="150"></canvas>
+      </div>
+      <div class="card-t">Свидетель</div>
+      <div class="card-d">Наблюдайте, как две воли ИИ сойдутся в бою. Скорость 1×–4×.</div>
+      <div class="card-b">Режим зрителя</div>
+    </div>
+    <div class="card c-coven" data-mode="coven">
+      <canvas data-emb="coven:shade" width="150" height="150"></canvas>
+      <div class="card-t">Ковен Пустой Луны</div>
+      <div class="card-d">Тьма, кость и порча. <b>Без штрафа во тьме и +10 к защите в ней.</b> Ульта «Затмение» гасит огни.</div>
+      <div class="card-b">Играть за Ковен</div>
+    </div>
+  </div>
+  <div class="m-foot"><button id="btnCodex" class="btn-ghost">Кодекс правил</button></div>
+</div>
+
+<!-- ================= HUD ================= -->
+<div id="hud" class="hidden">
+  <div id="topbar">
+    <div class="fac" id="facOrder"></div>
+    <div id="roundBox"><div id="roundNum"></div><div id="turnLabel"></div><div id="roundFx"></div></div>
+    <div class="fac right" id="facCoven"></div>
+  </div>
+  <div id="roster"></div>
+  <div id="unitPanel" class="empty">
+    <div class="up-port"><canvas id="portrait" width="128" height="140"></canvas></div>
+    <div class="up-info">
+      <div id="uName"></div><div id="uClass"></div>
+      <div class="up-hp"><div id="uHpBar"></div><span id="uHpTxt"></span></div>
+      <div id="uAp"></div>
+      <div id="uStatus"></div>
+    </div>
+    <div id="abilities"></div>
+  </div>
+  <div id="rightCol">
+    <button id="ultBtn"></button>
+    <div id="log"></div>
+  </div>
+  <button id="endTurn">Завершить ход <small>Enter</small></button>
+  <div id="specBar" class="hidden"><span>Скорость</span><button data-speed="1" class="on">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button></div>
+  <button id="btnMenu">Меню</button>
+  <div id="tileInfo"></div>
+  <div id="hint">ЛКМ — выбрать/идти · ПКМ — отмена/камера · 1–5 — умения · Tab — следующий · колесо — масштаб · WASD — камера</div>
+</div>
+
+<div id="tip"></div>
+<div id="toast"></div>
+<div id="banner"></div>
+<div id="ultFlash"></div>
+
+<div id="confirm" class="modal hidden"><div class="modal-box">
+  <div class="mb-title">Завершить ход?</div><div id="confirmText"></div>
+  <div class="mb-btns"><button id="confirmYes" class="btn-gold">Завершить</button><button id="confirmNo" class="btn-ghost">Вернуться</button></div>
+</div></div>
+
+<div id="pause" class="modal hidden"><div class="modal-box">
+  <div class="mb-title">Пауза</div>
+  <div class="mb-col">
+    <button id="pResume" class="btn-gold">Продолжить</button>
+    <button id="pCodex" class="btn-ghost">Кодекс правил</button>
+    <button id="pSound" class="btn-ghost">Звук: вкл</button>
+    <button id="pRestart" class="btn-ghost">Начать заново</button>
+    <button id="pQuit" class="btn-ghost">Выйти в меню</button>
+  </div>
+</div></div>
+
+<div id="endscreen" class="hidden">
+  <div class="es-box">
+    <div class="m-orn"></div>
+    <div id="endTitle"></div>
+    <div id="endReason"></div>
+    <div id="endStats"></div>
+    <div class="mb-btns"><button id="endAgain" class="btn-gold">Ещё раз</button><button id="endMenu" class="btn-ghost">В меню</button></div>
+  </div>
+</div>
+
+<div id="codex" class="modal hidden"><div class="modal-box codex-box">
+  <button id="codexClose" class="x">×</button>
+  <div class="mb-title">Кодекс правил</div>
+  <div class="codex-grid">
+    <section><h4>Очки действий</h4><p>У каждого бойца <b>3 ОД</b>. Шаг на расстояние «Шага» стоит 1 ОД (диагональ — 1,5). Выстрел — обычно 2 ОД. Действуйте в любом порядке: сделайте выстрел и отступите в укрытие.</p>
+      <p><b>Стойкость.</b> Несгоревшие ОД в конце хода дают +8 к защите каждое до следующего вашего хода. Иногда лучше не двигаться.</p>
+      <p><b>Кровавая цена.</b> Раз за ход любой боец может отдать 3 ОЗ за +1 ОД.</p></section>
+    <section><h4>Укрытия</h4><p>Надгробия, саркофаги, деревья, жаровни — <b>половинное</b> укрытие (−20 к попаданию). Стены и колонны — <b>полное</b> (−40) и закрывают обзор.</p>
+      <p>Укрытие работает, только если оно между вами и стрелком. Без укрытия цель <b>во фланге</b>: шанс крита резко растёт. Укрытия разрушаются — промахи и огонь крошат камень.</p>
+      <p>Промах в пределах 10% — <b>задевание</b>: половина урона.</p></section>
+    <section><h4>Свет и тьма</h4><p>Жаровни освещают руины. Стрелять во тьму сложнее (−15), но Ковен видит во тьме. Орден на свету получает +10 к меткости.</p>
+      <p>Соседнюю жаровню можно <b>зажечь или погасить</b> за 1 ОД. Огонь Ордена светит, Чёрное пламя Ковена пожирает свет. Тень во тьме может стать невидимой.</p></section>
+    <section><h4>Алтарь и победа</h4><p>Начните ход, удерживая центральный алтарь (и без врагов на нём): +1 очко алтаря и +2 ресурса. <b>5 очков — ритуальная победа.</b> Или уничтожьте всех врагов. Через 20 раундов побеждает перевес.</p>
+      <p><b>Вера / Скверна</b> копится каждый ход, за попадания и убийства. Тратится на умения и ульту фракции (6).</p></section>
+    <section class="wide"><h4>Бойцы</h4>
+      <div class="cls"><b>Храмовник / Костяной страж</b> — ближний бой. «Бастион»: союзники рядом получают полное укрытие с его стороны. «Вызов»: враги рядом стреляют хуже по всем, кроме него.</div>
+      <div class="cls"><b>Арбалетчица / Костяной лучник</b> — дальний бой. Только стрелок умеет держать <b>Бдение</b> — стрелять по движущимся врагам.</div>
+      <div class="cls"><b>Пиромант / Гексер</b> — магия не боится тьмы. «Огненный вал» бьёт по площади, крушит укрытия и поджигает землю. Осторожно — бьёт и своих.</div>
+      <div class="cls"><b>Клинок покаяния / Тень</b> — 6 шагов за ОД. «Сокрытие» во тьме, удар из тени с огромным шансом крита по фланговой цели.</div>
+      <div class="cls"><b>Капеллан / Костяная ведьма</b> — исцеление и Благословение (Орден) или Проклятие (Ковен).</div></section>
+  </div>
+</div></div>
+
+<div id="veil"><div class="veil-sigil"></div></div>
+
+<script src="js/data.js"></script>
+<script src="js/core.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
