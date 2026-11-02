@@ -84,7 +84,7 @@ AI.pos = function (u, x, y) {
   if (!(u.cls === 'shade' && (!lit || u.side === 'order'))) {
     let seen = 0; for (const e of enemies) if (Math.hypot(e.x - x, e.y - y) <= 9 && hasLOS(e, P)) seen++;
     const frag = u.hp <= 5 ? 1.6 : 1;
-    if (seen >= 2) s -= (seen - 1) * 1.1 * frag * (u.cls === 'shade' || u.cls === 'mystic' || u.cls === 'priest' ? 1.4 : 0.7);
+    if (seen >= 2) s -= (seen - 1) * 1.1 * frag * (u.cls === 'mystic' && u.side === 'coven' ? 1.9 : u.cls === 'shade' || u.cls === 'mystic' || u.cls === 'priest' ? 1.4 : 0.7);
   }
   if (u.cls === 'shade') s += u.side === 'order' ? 0.3 : (lit ? -1.5 : 1.8);
   else if (u.side === 'coven') s += lit ? -0.2 : 0.5;
@@ -101,7 +101,7 @@ AI.pos = function (u, x, y) {
   const dAlt = Math.hypot(7.5 - x, 7.5 - y);
   const urgency = 1 + Math.max(G.altar.order, G.altar.coven) * 0.35 + (G.altar[foe(u.side)] >= 1 ? 0.8 : 0);
   const nearAlt = x >= 6 && x <= 9 && y >= 6 && y <= 9;
-  if (nearAlt && !inAltar(x, y) && alive(foe(u.side)).some(e => inAltar(e.x, e.y))) s += 2.5 * urgency;
+  if (nearAlt && !inAltar(x, y) && alive(foe(u.side)).some(e => !e.st.concealed && inAltar(e.x, e.y))) s += 2.5 * urgency;
   if (inAltar(x, y)) s += (u.cls === 'bastion' ? 4.5 : 2.5) * urgency;
   else s -= dAlt * (u.cls === 'bastion' || u.cls === 'shade' ? 0.22 : 0.1) * urgency;
   const t = tile(x, y);
@@ -169,7 +169,7 @@ AI.bestAction = function (u, P, ap) {
       for (const t of targetsFor(virt, id, P)) {
         let v;
         if (u.side === 'order') v = (t.ap >= 2 && t !== u ? 2.6 : 1.2) + (t.cls === 'marksman' || t.cls === 'shade' ? 0.6 : 0);
-        else v = 2.4 + (t.cls === 'marksman' || t.cls === 'bastion' ? 0.6 : 0) - (t.st.cursed > 0 ? 3 : 0);
+        else v = 2.0 + (t.cls === 'marksman' || t.cls === 'bastion' ? 0.6 : 0) - (t.st.cursed > 0 ? 3 : 0) - (G.res[u.side] < 5 ? 1.4 : 0);
         consider(v - 0.6, id, t);
       }
     } else if (id === 'bulwark') {

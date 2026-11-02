@@ -48,7 +48,7 @@ function makeUnit(side, cls, x, y) {
   const C = CLASSES[cls];
   return {
     id: ++UID, side, cls, name: UNIT_NAMES[side][cls], title: C.names[side],
-    x, y, rx: x, ry: y, hp: C.hp, maxHp: C.hp, mov: C.mov, aim: C.aim, def: C.def, crit: C.crit,
+    x, y, rx: x, ry: y, hp: (side === 'coven' && C.hpCoven) || C.hp, maxHp: (side === 'coven' && C.hpCoven) || C.hp, mov: C.mov, aim: C.aim, def: C.def, crit: C.crit,
     ap: 0, guard: 0, bloodUsed: false,
     st: { bulwark: false, watch: 0, concealed: false, blessed: 0, cursed: 0, taunt: null },
     face: side === 'order' ? 1 : -1, dead: false, kills: 0,
@@ -241,6 +241,7 @@ function calcAttack(att, tgt, id, opt = {}) {
   if (att.st.taunt && att.st.taunt !== tgt.id) br.push(['Вызов', -20]);
   if (att.st.concealed && id === 'backstab') br.push(['Из сокрытия', 20]);
   if (G.eclipse > 0 && att.side === 'order') br.push(['Ужас затмения', -10]);
+  { const ft = tile(from.x, from.y); if (ft && ft.burn > 0 && ft.burnSide === 'coven' && att.side === 'order') br.push(['Чёрное пламя', -10]); }
   if (opt.reaction) br.push(['Ответный выстрел', -10]);
   for (const p of defenseOf(tgt, tpos)) br.push(p);
   hit = br.reduce((s, p) => s + p[1], 0);
@@ -603,6 +604,8 @@ async function startTurn(side) {
   const mine = alive(side).some(u => inAltar(u.x, u.y));
   const theirs = alive(foe(side)).some(u => u.x >= 6 && u.x <= 9 && u.y >= 6 && u.y <= 9);
   let altarMsg = '';
+  const theirsVisible = alive(foe(side)).some(u => !u.st.concealed && u.x >= 6 && u.x <= 9 && u.y >= 6 && u.y <= 9);
+  if (mine && theirs && !theirsVisible && G.round >= 2) log('Алтарь молчит — рядом чьё-то незримое присутствие…', side);
   if (mine && !theirs && G.round >= 2) {
     G.altar[side]++; gainRes(side, 2);
     altarMsg = `Алтарь: ${G.altar[side]}/${ALTAR_WIN}`;

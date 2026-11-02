@@ -11,6 +11,8 @@ const R = {
   menuDrift: true,
 };
 
+// скрытый враг невидим для живого игрока
+function hiddenFromViewer(u) { return u.st.concealed && !G.spectator && isAI(u.side) && G.scene === 'battle'; }
 const iso = (x, y) => ({ x: (x - y) * TW / 2, y: (x + y) * TH / 2 });
 
 R.init = function () {
@@ -61,7 +63,7 @@ R.pickTile = function (sx, sy) {
 R.pickUnit = function (sx, sy) {
   const w = R.toWorld(sx, sy); let best = null, bd = -1;
   for (const u of G.units) {
-    if (u.dead) continue;
+    if (u.dead || hiddenFromViewer(u)) continue;
     const p = iso(u.rx, u.ry);
     if (w.x > p.x - 14 && w.x < p.x + 14 && w.y > p.y - 50 && w.y < p.y + 6) {
       const d = u.rx + u.ry; if (d > bd) { bd = d; best = u; }
@@ -848,6 +850,7 @@ R.drawBurnFlames = function (c, time) {
 };
 
 R.drawUnitWorld = function (c, u, time) {
+  if (hiddenFromViewer(u)) return;
   const p = iso(u.rx, u.ry);
   let ox = 0, oy = 0;
   if (u.anim.lunge) { const l = iso(u.anim.lx, u.anim.ly); const k = u.anim.lunge * 0.35; ox = l.x * k; oy = l.y * k; }
@@ -903,6 +906,7 @@ R.drawUnitWorld = function (c, u, time) {
 R.spriteScale = function () { return Math.min(3, Math.max(1, Math.ceil(R.cam.z * R.dpr))); };
 
 R.drawUnitHud = function (c, u, time) {
+  if (hiddenFromViewer(u)) return;
   const p = iso(u.rx, u.ry);
   const P = FACTIONS[u.side].pal;
   const top = p.y - 64;

@@ -269,7 +269,7 @@ UI.onMove = function (e) {
   if (G.scene !== 'battle') return;
   const ti = $('#tileInfo');
   if (!G.hover) { UI.tip(null); ti.classList.remove('show'); return; }
-  const u = unitAt(G.hover.x, G.hover.y);
+  let u = unitAt(G.hover.x, G.hover.y); if (u && hiddenFromViewer(u)) u = null;
   const s = G.sel;
   // подсказка атаки
   if (s && G.mode && u && abType(G.mode, s.side) === 'attack' && R.targetCache(s, G.mode).includes(u)) {
