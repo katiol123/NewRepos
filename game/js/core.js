@@ -412,7 +412,7 @@ async function doAttack(att, tgt, id, opt = {}) {
     if (outcome === 'crit') { FX.float(tgt.x, tgt.y, 'КРИТ!', '#ff5a3c', 1.3); FX.shake(9); }
     if (outcome === 'graze') FX.float(tgt.x, tgt.y, 'ЗАДЕЛ', '#d9c49a', 0.85);
     const word = outcome === 'crit' ? '<b class="crit">крит</b>' : outcome === 'graze' ? 'задевает' : 'попадание';
-    log(`${uName(att)} → ${uName(tgt)}: ${word}, <span class="nw">−${dmg} (${calc.hit}%)</span>.`, att.side);
+    log(`${uName(att)} → ${uName(tgt)}: ${word},&nbsp;<span class="nw">−${dmg} (${calc.hit}%)</span>.`, att.side);
     gainRes(att.side, 1);
     await damageUnit(tgt, dmg, att, outcome);
   }

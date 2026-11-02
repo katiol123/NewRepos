@@ -203,9 +203,10 @@ UI.unitPanel = function () {
   if (u.st.cursed > 0) st.push(`<b class="s-vio">Проклят ${u.st.cursed}</b>`);
   if (u.st.taunt) st.push('<b class="s-red">Под Вызовом</b>');
   st.push(isLit(u.x, u.y) ? '<b class="s-gold">на свету</b>' : '<b class="s-vio">во тьме</b>');
-  $('#uStatus').innerHTML = st.join(' · ');
+  $('#uStatus').innerHTML = st.map(x => `<span class="chip">${x}</span>`).join(' · ');
   const human = UI.humanTurn() && u.side === G.side;
   if (G.spectator) { $('#abilities').innerHTML = ''; return; }
+  if (u.side !== G.side || isAI(u.side) || G.winner) { $('#abilities').innerHTML = `<div class="ab-wait">${isAI(G.side) ? 'Ход противника…' : 'Боец ждёт своего хода'}</div>`; return; }
   const list = abilitiesOf(u);
   const ab = $('#abilities'); ab.innerHTML = '';
   list.forEach((id, i) => {

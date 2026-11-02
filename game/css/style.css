@@ -112,12 +112,12 @@ b.crit { color: #ff5a3c; }
 .e-dawn { color: #ffd27a; border-color: #ffd27a; } .e-ecl { color: #c79bff; border-color: #c79bff; }
 
 /* ростер */
-#roster { position: absolute; left: 12px; top: 120px; display: flex; flex-direction: column; gap: 14px; }
+#roster { position: absolute; left: 12px; top: 96px; display: flex; flex-direction: column; gap: 8px; }
 .r-col { display: flex; flex-direction: column; gap: 4px; }
 .r-head { font-family: var(--display); font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--dim); padding-left: 2px; }
 .r-order .r-head { color: var(--order); } .r-coven .r-head { color: var(--coven); }
 .r-unit { display: flex; align-items: center; gap: 6px; width: 188px; padding: 2px 8px 2px 2px; background: var(--panel); border: 1px solid rgba(255,255,255,.05); border-left: 2px solid transparent; cursor: pointer; transition: all .2s; }
-.r-unit canvas { width: 38px; height: 38px; }
+.r-unit canvas { width: 34px; height: 34px; }
 .r-unit:hover { background: var(--panel2); transform: translateX(3px); }
 .r-unit.sel { border-left-color: var(--gold); background: rgba(60,44,24,.6); }
 .r-unit.spent { opacity: .6; }
@@ -188,7 +188,7 @@ b.crit { color: #ff5a3c; }
 #specBar span { color: var(--dim); margin-right: 6px; }
 #specBar button { padding: 6px 12px; background: transparent; color: var(--gold); border: 1px solid var(--line); font-family: var(--display); }
 #specBar button.on { background: var(--gold); color: #1b1108; }
-#tileInfo { position: absolute; left: 12px; bottom: 60px; font-size: 14px; padding: 6px 10px; background: rgba(8,6,10,.8); border: 1px solid rgba(255,255,255,.06); opacity: 0; transition: opacity .2s; max-width: 240px; }
+#tileInfo { position: absolute; left: 50%; transform: translateX(-50%); bottom: 186px; text-align: center; font-size: 14px; padding: 6px 10px; background: rgba(8,6,10,.8); border: 1px solid rgba(255,255,255,.06); opacity: 0; transition: opacity .2s; max-width: 240px; }
 #tileInfo.show { opacity: 1; }
 #hint { position: absolute; left: 50%; transform: translateX(-50%); top: 98px; font-size: 14px; color: rgba(225,212,190,.8); text-shadow: 0 1px 3px #000; white-space: nowrap; pointer-events: none; }
 
@@ -232,13 +232,19 @@ b.crit { color: #ff5a3c; }
 .mb-title { font-family: var(--display); font-size: 24px; color: var(--gold); margin-bottom: 12px; letter-spacing: .06em; }
 .mb-btns { display: flex; gap: 12px; justify-content: center; margin-top: 18px; }
 .mb-col { display: flex; flex-direction: column; gap: 10px; }
-.codex-box { width: min(1000px, 94vw); max-height: 88vh; overflow-y: auto; text-align: left; }
+.codex-box { width: min(1000px, 94vw); max-height: 88vh; overflow-y: auto; text-align: left; scrollbar-width: thin; scrollbar-color: var(--gold2) #0b080d; }
+.codex-box::after { content: ''; position: sticky; display: block; bottom: -24px; height: 40px; margin: 0 -28px -24px; background: linear-gradient(transparent, #0b080d); pointer-events: none; }
+.codex-box::-webkit-scrollbar { width: 8px; } .codex-box::-webkit-scrollbar-thumb { background: var(--gold2); }
 .codex-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 26px; }
 .codex-grid section.wide { grid-column: 1 / -1; }
 .codex-grid h4 { font-family: var(--display); color: var(--gold); margin: 0 0 6px; font-size: 16px; letter-spacing: .05em; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
 .codex-grid p, .codex-grid .cls { margin: 0 0 8px; color: #e2d8c8; line-height: 1.45; font-size: 17px; font-weight: 600; }
 .codex-grid b { color: #f0e2c4; }
-.x { position: absolute; right: 10px; top: 6px; background: none; border: none; color: var(--gold); font-size: 30px; }
+.x { position: absolute; right: 12px; top: 10px; width: 40px; height: 40px; background: rgba(0,0,0,.4); border: 1px solid var(--line); color: var(--gold); font-size: 30px; line-height: 34px; }
+.x:hover { border-color: var(--gold); }
+#uStatus .chip { white-space: nowrap; }
+.ab-wait { padding: 0 22px; color: var(--dim); font-style: italic; font-size: 16px; align-self: center; }
+body.spectating #unitPanel { min-width: 0; }
 
 /* финал */
 #endscreen { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, rgba(4,2,6,.86), rgba(0,0,0,.97)); animation: fadeIn 1.2s ease; z-index: 95; }

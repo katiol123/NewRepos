@@ -31,6 +31,7 @@ FX.drawTexts = function (c) {
     const s = t.scale * (t.age < 0.15 ? 0.6 + 2.6 * t.age : 1);
     c.save(); c.globalAlpha = Math.min(1, a); c.translate(t.x, t.y - t.age * 22); c.scale(s, s);
     c.font = '700 15px Cinzel, Georgia, serif'; c.textAlign = 'center';
+    const tw = c.measureText(t.text).width; c.fillStyle = 'rgba(5,3,8,0.55)'; c.fillRect(-tw / 2 - 5, -14, tw + 10, 19);
     c.lineWidth = 3.5; c.strokeStyle = 'rgba(0,0,0,0.85)'; c.strokeText(t.text, 0, 0);
     c.fillStyle = t.color; c.fillText(t.text, 0, 0);
     c.restore();

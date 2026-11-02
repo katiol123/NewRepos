@@ -142,7 +142,7 @@ const ICONS = {
   blood: '<path d="M12 2s7 8 7 13a7 7 0 01-14 0c0-5 7-13 7-13z"/>',
   brazier: '<path d="M5 11h14l-2 4H7z"/><path d="M8 15l-2 7M16 15l2 7M12 15v7" stroke="currentColor" stroke-width="1.6"/><path d="M12 2c1 3 4 4 4 7H8c0-2 2-3 2-5 1 1 1.5 1.5 2 2z"/>',
   sun: '<circle cx="12" cy="12" r="4.5"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4M4.2 4.2l2.8 2.8M17 17l2.8 2.8M4.2 19.8L7 17M17 7l2.8-2.8" stroke="currentColor" stroke-width="1.8"/>',
-  moon: '<path d="M14 2a10 10 0 100 20 8 8 0 010-20z"/>',
+  moon: '<path d="M15 3a9 9 0 1 0 6 15.5A7.5 7.5 0 0 1 15 3z"/>',
 };
 function svgIcon(name, size = 22) {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor">${ICONS[name] || ''}</svg>`;

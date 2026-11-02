@@ -672,7 +672,7 @@ R.frame = function (dt) {
 
   c.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
   // фон
-  if (!R.bgCv || R.bgEcl !== (G.eclipse > 0)) R.buildBg();
+  if (!R.bgCv || R.bgEcl !== (G.eclipse > 0) || R.bgScene !== G.scene) R.buildBg();
   c.drawImage(R.bgCv, 0, 0, R.W, R.H);
   if (!G.map) return;
 
@@ -731,7 +731,7 @@ R.frame = function (dt) {
 
 R.buildBg = function () {
   const cv = R.bgCv || (R.bgCv = document.createElement('canvas'));
-  cv.width = R.W; cv.height = R.H; R.bgEcl = G.eclipse > 0;
+  cv.width = R.W; cv.height = R.H; R.bgEcl = G.eclipse > 0; R.bgScene = G.scene;
   const c = cv.getContext('2d');
   const bg = c.createLinearGradient(0, 0, 0, R.H);
   bg.addColorStop(0, '#07050b'); bg.addColorStop(0.55, '#130c18'); bg.addColorStop(1, '#07050a');
@@ -740,7 +740,7 @@ R.buildBg = function () {
 };
 R.drawSky = function (c, time) {
   // луна
-  const mx = R.W * 0.7, my = R.H * 0.2;
+  const mx = G.scene === 'menu' ? R.W * 0.9 : R.W * 0.7, my = G.scene === 'menu' ? R.H * 0.12 : R.H * 0.2;
   c.save(); c.globalCompositeOperation = 'lighter';
   const mg = c.createRadialGradient(mx, my, 0, mx, my, 220);
   const ecl = G.eclipse > 0;
@@ -1007,14 +1007,15 @@ R.drawHighlights = function (c, time) {
     }
     // тьма/свет
     const lit = isLit(h.x, h.y);
-    c.font = '600 11px "Cormorant Garamond", Georgia, serif'; c.textAlign = 'center';
-    c.fillStyle = 'rgba(0,0,0,0.7)'; c.fillRect(pe.x - 30, pe.y + 10, 60, 15);
+    const fz = 14 / R.cam.z;
+    c.font = `700 ${fz}px "Cormorant Garamond", Georgia, serif`; c.textAlign = 'center';
+    c.fillStyle = 'rgba(0,0,0,0.78)'; c.fillRect(pe.x - fz * 3.6, pe.y + 9, fz * 7.2, fz * 1.3);
     c.fillStyle = lit ? '#ffd27a' : '#b9a6ff';
-    c.fillText(`${a} ОД · ${lit ? 'свет' : 'тьма'}`, pe.x, pe.y + 21);
+    c.fillText(`${a} ОД · ${lit ? 'свет' : 'тьма'}`, pe.x, pe.y + 9 + fz);
     // предупреждение Бдения
     const watchers = alive(foe(u.side)).filter(w => w.st.watch > 0 && path.some(s => dist(w, s) <= 11 && hasLOS(w, s)));
-    if (watchers.length && !u.st.concealed) { c.fillStyle = '#ffe08a'; c.fillText('⚠ под Бдением', pe.x, pe.y + 36); }
-    if (path.some(s => tile(s.x, s.y).burn > 0)) { c.fillStyle = '#ff9d3a'; c.fillText('огонь: −2 ОЗ', pe.x, pe.y + (watchers.length ? 50 : 36)); }
+    if (watchers.length && !u.st.concealed) { c.fillStyle = '#ffe08a'; c.fillText('⚠ под Бдением', pe.x, pe.y + 12 + fz * 2.3); }
+    if (path.some(s => tile(s.x, s.y).burn > 0)) { c.fillStyle = '#ff9d3a'; c.fillText('огонь: −2 ОЗ', pe.x, pe.y + 12 + fz * (watchers.length ? 3.5 : 2.3)); }
   }
 };
 R.coverShield = function (c, x, y, v) {
