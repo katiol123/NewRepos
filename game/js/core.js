@@ -118,7 +118,7 @@ function refreshLight() {
   }
   G.light = g;
   // сокрытые на свету раскрываются
-  for (const u of alive()) if (u.st.concealed && isLit(u.x, u.y)) reveal(u);
+  for (const u of alive()) if (u.st.concealed && isLit(u.x, u.y) && u.side === 'coven') reveal(u);
 }
 const lightAt = (x, y) => G.light ? G.light[y][x] : 1;
 const isLit = (x, y) => lightAt(x, y) >= 0.45;
@@ -235,10 +235,10 @@ function calcAttack(att, tgt, id, opt = {}) {
     if (d > 7) br.push(['Дальность', -Math.round((d - 7) * 4)]);
     if (!A.ignoreDark && att.side !== 'coven' && !isLit(tpos.x, tpos.y)) br.push(['Цель во тьме', -15]);
   }
-  if (att.side === 'order' && isLit(from.x, from.y)) br.push(['Свет веры', 10]);
+  if (att.side === 'order' && isLit(from.x, from.y)) br.push(['Свет веры', 8]);
   if (att.st.blessed > 0) br.push(['Благословение', 15]);
   if (att.st.cursed > 0) br.push(['Проклятие', -15]);
-  if (att.st.taunt && att.st.taunt !== tgt.id) br.push(['Вызов', -15]);
+  if (att.st.taunt && att.st.taunt !== tgt.id) br.push(['Вызов', -20]);
   if (att.st.concealed && id === 'backstab') br.push(['Из сокрытия', 20]);
   if (G.eclipse > 0 && att.side === 'order') br.push(['Ужас затмения', -10]);
   if (opt.reaction) br.push(['Ответный выстрел', -10]);
@@ -269,14 +269,15 @@ function adjBrazier(u, pos) {
   for (const [dx, dy] of DIRS8) { const t = tile(pos.x + dx, pos.y + dy); if (t && t.obj === 'B') return t; }
   return null;
 }
+function abCost(u, id) { return id === 'vanish' && u.side === 'order' ? 2 : ABIL[id].ap; }
 function canUse(u, id) {
   const A = ABIL[id];
   if (u.dead) return { ok: false, why: 'Пал' };
   if (G.side !== u.side) return { ok: false, why: 'Не ваш ход' };
-  if (u.ap < A.ap || (A.apAll && u.ap < 1)) return { ok: false, why: 'Мало ОД' };
+  if (u.ap < abCost(u, id) || (A.apAll && u.ap < 1)) return { ok: false, why: 'Мало ОД' };
   if (A.res && G.res[u.side] < A.res) return { ok: false, why: 'Мало ресурса: ' + FACTIONS[u.side].res };
   if (id === 'blood') { if (u.bloodUsed) return { ok: false, why: 'Уже в этом ходу' }; if (u.hp <= 3) return { ok: false, why: 'Слишком мало ОЗ' }; if (u.ap >= MAX_AP + 1) return { ok: false, why: 'ОД на пределе' }; }
-  if (id === 'vanish') { if (u.st.concealed) return { ok: false, why: 'Уже сокрыт' }; if (isLit(u.x, u.y)) return { ok: false, why: 'Нужна тьма' }; if (alive(foe(u.side)).some(e => Math.max(Math.abs(e.x - u.x), Math.abs(e.y - u.y)) <= 2)) return { ok: false, why: 'Враг слишком близко (≤2 клеток)' }; }
+  if (id === 'vanish') { if (u.st.concealed) return { ok: false, why: 'Уже сокрыт' }; if (u.side === 'coven' && isLit(u.x, u.y)) return { ok: false, why: 'Нужна тьма' }; if (alive(foe(u.side)).some(e => !e.st.concealed && Math.max(Math.abs(e.x - u.x), Math.abs(e.y - u.y)) <= 2)) return { ok: false, why: 'Враг слишком близко (≤2 клеток)' }; }
   if (id === 'bulwark' && u.st.bulwark) return { ok: false, why: 'Уже активно' };
   if (id === 'brazier' && !adjBrazier(u)) return { ok: false, why: 'Нужна соседняя жаровня' };
   if (id === 'taunt' && u.tauntUsed) return { ok: false, why: 'Уже в этом ходу' };
@@ -335,20 +336,22 @@ async function moveUnit(u, path) {
   if (!path || !path.length) return;
   let c = 0, px = u.x, py = u.y;
   for (const s of path) { c += (s.x !== px && s.y !== py) ? 1.5 : 1; px = s.x; py = s.y; }
-  u.ap = Math.max(0, u.ap - apFor(u, c));
+  const apStart = u.ap; u.ap = Math.max(0, u.ap - apFor(u, c));
+  let walked = 0, wx = u.x, wy = u.y;
   SFX.play('step');
   for (const s of path) {
     if (u.dead || G.winner) break;
     faceTo(u, s.x, s.y);
     const amb = unitAt(s.x, s.y);
-    if (amb && amb !== u) { reveal(amb, 'на него наткнулись'); FX.float(u.x, u.y, 'ЗАСАДА!', '#ff9b6b', 1); break; }
+    if (amb && amb !== u) { reveal(amb, 'на него наткнулись'); FX.float(u.x, u.y, 'ЗАСАДА!', '#ff9b6b', 1); u.ap = Math.max(u.ap, apStart - Math.max(1, apFor(u, walked))); break; }
+    walked += (s.x !== wx && s.y !== wy) ? 1.5 : 1; wx = s.x; wy = s.y;
     const fx = u.x, fy = u.y;
     await tween(0.17, f => { u.rx = fx + (s.x - fx) * f; u.ry = fy + (s.y - fy) * f; });
     u.x = s.x; u.y = s.y; u.rx = s.x; u.ry = s.y;
     FX.dust(s.x, s.y);
     const t = tile(s.x, s.y);
     if (t.burn > 0) { await damageUnit(u, 2, null, 'fire'); if (u.dead) break; }
-    if (u.st.concealed && isLit(u.x, u.y)) reveal(u, 'вышел на свет');
+    if (u.st.concealed && u.side === 'coven' && isLit(u.x, u.y)) reveal(u, 'вышел на свет');
     if (u.st.concealed) for (const e of alive(foe(u.side))) if (Math.max(Math.abs(e.x - u.x), Math.abs(e.y - u.y)) <= 1) { reveal(u, 'враг вплотную'); break; }
     // если рядом стоит сокрытый враг — он раскрыт
     for (const e of alive(foe(u.side))) if (e.st.concealed && Math.max(Math.abs(e.x - u.x), Math.abs(e.y - u.y)) <= 1) reveal(e, 'враг вплотную');
@@ -472,7 +475,7 @@ async function useAbility(u, id, target) {
   const chk = canUse(u, id); if (!chk.ok) return;
   const A = ABIL[id];
   G.busy = true; G.mode = null; UI.tip(null);
-  const apCost = A.apAll ? u.ap : A.ap;
+  const apCost = A.apAll ? u.ap : abCost(u, id);
   u.ap -= apCost;
   if (A.res) gainRes(u.side, -A.res);
   try {
@@ -598,9 +601,9 @@ async function startTurn(side) {
   for (const u of alive()) { if (side === 'order' && u.st.blessed > 0) u.st.blessed--; if (side === 'coven' && u.st.cursed > 0) u.st.cursed--; }
   // алтарь
   const mine = alive(side).some(u => inAltar(u.x, u.y));
-  const theirs = alive(foe(side)).some(u => inAltar(u.x, u.y));
+  const theirs = alive(foe(side)).some(u => u.x >= 6 && u.x <= 9 && u.y >= 6 && u.y <= 9);
   let altarMsg = '';
-  if (mine && !theirs) {
+  if (mine && !theirs && G.round >= 2) {
     G.altar[side]++; gainRes(side, 2);
     altarMsg = `Алтарь: ${G.altar[side]}/${ALTAR_WIN}`;
     log(`Алтарь откликается ${FACTIONS[side].gen} (${G.altar[side]}/${ALTAR_WIN}).`, side);
@@ -655,7 +658,8 @@ function checkWin() {
 function declare(w, reason) {
   if (G.winner) return;
   G.winner = w; G.winReason = reason; G.mode = null;
-  setTimeout(() => UI.showEnd(), 1600);
+  const gid = G.gameId;
+  setTimeout(() => { if (G.gameId === gid && G.winner) UI.showEnd(); }, 1600);
 }
 
 function selectUnit(u) {

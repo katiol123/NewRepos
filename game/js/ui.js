@@ -213,7 +213,7 @@ UI.unitPanel = function () {
     const A = ABIL[id]; const chk = human ? canUse(u, id) : { ok: false, why: '' };
     const b = document.createElement('button');
     b.className = 'ab' + (G.mode === id ? ' on' : '') + (chk.ok ? '' : ' off');
-    const cost = A.apAll ? 'все ОД' : A.ap + ' ОД';
+    const cost = A.apAll ? 'все ОД' : abCost(u, id) + ' ОД';
     b.innerHTML = `<span class="ab-key">${i + 1}</span>${svgIcon(A.icon, 26)}<span class="ab-cost">${cost}${A.res ? ' · ' + A.res + '✦' : ''}</span>`;
     let extra = '';
     if (A.dmg) extra += `<br><span class="t-dim">Урон ${A.dmg[0]}–${A.dmg[1]}${A.range ? ' · дальность ' + A.range : ''}</span>`;

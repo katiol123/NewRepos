@@ -81,24 +81,27 @@ AI.pos = function (u, x, y) {
   }
   const lit = isLit(x, y);
   // угроза ответного хода: сколько врагов достанут эту клетку
-  if (!(u.cls === 'shade' && !lit)) {
+  if (!(u.cls === 'shade' && (!lit || u.side === 'order'))) {
     let seen = 0; for (const e of enemies) if (Math.hypot(e.x - x, e.y - y) <= 9 && hasLOS(e, P)) seen++;
     const frag = u.hp <= 5 ? 1.6 : 1;
     if (seen >= 2) s -= (seen - 1) * 1.1 * frag * (u.cls === 'shade' || u.cls === 'mystic' || u.cls === 'priest' ? 1.4 : 0.7);
   }
-  if (u.cls === 'shade') s += lit ? -1.5 : 1.8;
+  if (u.cls === 'shade') s += u.side === 'order' ? 0.3 : (lit ? -1.5 : 1.8);
   else if (u.side === 'coven') s += lit ? -0.2 : 0.5;
   else s += lit ? 1.0 : -0.4;
   // роли
   const W = { marksman: [8, 0.32], mystic: [6, 0.32], priest: [7, 0.25], bastion: [1.5, 0.45], shade: [1.5, 0.3] }[u.cls];
   if (dn < 99) s -= Math.abs(dn - W[0]) * W[1];
+  if (dn < 99 && !enemies.some(e => hasLOS(e, P))) s -= dn * 0.15;
   if (u.cls === 'priest' || u.cls === 'marksman') {
     let da = 99; for (const a of alive(u.side)) if (a !== u) da = Math.min(da, Math.hypot(a.x - x, a.y - y));
     if (da < 99) s -= Math.max(0, da - 3) * 0.25;
   }
   // алтарь
   const dAlt = Math.hypot(7.5 - x, 7.5 - y);
-  const urgency = 1 + Math.max(G.altar.order, G.altar.coven) * 0.35;
+  const urgency = 1 + Math.max(G.altar.order, G.altar.coven) * 0.35 + (G.altar[foe(u.side)] >= 1 ? 0.8 : 0);
+  const nearAlt = x >= 6 && x <= 9 && y >= 6 && y <= 9;
+  if (nearAlt && !inAltar(x, y) && alive(foe(u.side)).some(e => inAltar(e.x, e.y))) s += 2.5 * urgency;
   if (inAltar(x, y)) s += (u.cls === 'bastion' ? 4.5 : 2.5) * urgency;
   else s -= dAlt * (u.cls === 'bastion' || u.cls === 'shade' ? 0.22 : 0.1) * urgency;
   const t = tile(x, y);
@@ -117,7 +120,7 @@ AI.bestAction = function (u, P, ap) {
   const virt = Object.assign({}, u, { x: P.x, y: P.y });
   for (const id of abilitiesOf(virt)) {
     const A = ABIL[id];
-    if (A.ap > ap || (A.apAll && ap < 1)) continue;
+    if (abCost(u, id) > ap || (A.apAll && ap < 1)) continue;
     if (A.res && G.res[u.side] < A.res) continue;
     const ty = abType(id, u.side);
     if (ty === 'attack') {
@@ -127,7 +130,7 @@ AI.bestAction = function (u, P, ap) {
         const pk = c.hit / 100;
         const exp = pk * avg * (1 + c.crit / 200);
         const killP = A.dmg[1] * (c.crit > 30 ? 1.5 : 1) >= e.hp ? pk * clamp((A.dmg[1] * (1 + c.crit / 100) - e.hp + 1) / (A.dmg[1] - A.dmg[0] + 1), 0.15, 1) : 0;
-        let v = exp * 1.1 + killP * 7 + (e.cls === 'priest' || e.cls === 'mystic' ? 0.6 : 0) + (inAltar(e.x, e.y) ? 1 : 0);
+        let v = exp * 1.1 + killP * 7 + (e.cls === 'priest' || e.cls === 'mystic' ? 0.6 : 0) + (inAltar(e.x, e.y) ? 2 + G.altar[e.side] * 1.2 : 0);
         v -= A.ap * 0.25;
         if (id === 'pierce' && ap < 3) continue;
         consider(v, id, e);
@@ -178,21 +181,22 @@ AI.bestAction = function (u, P, ap) {
     } else if (id === 'taunt') {
       if (u.tauntUsed) continue;
       const ts = alive(foe(u.side)).filter(e => !e.st.concealed && dist(P, e) <= 4 && hasLOS(P, e));
-      if (ts.length && u.hp > u.maxHp * 0.5) consider(ts.length * 1.0 - 0.8, id, null);
+      if (ts.length && u.hp > u.maxHp * 0.5) consider(ts.length * 1.4 - 0.4, id, null);
     } else if (id === 'watch') {
       if (u.st.watch) continue;
       const vis = alive(foe(u.side)).filter(e => !e.st.concealed && dist(P, e) <= 11 && hasLOS(P, e)).length;
       consider(vis ? 1.4 : 2.3 + (ap >= 3 ? 0.8 : 0), id, null);
     } else if (id === 'vanish') {
-      if (u.st.concealed || isLit(P.x, P.y)) continue;
-      if (alive(foe(u.side)).some(e => Math.max(Math.abs(e.x - P.x), Math.abs(e.y - P.y)) <= 2)) continue;
+      if (u.st.concealed || (u.side === 'coven' && isLit(P.x, P.y))) continue;
+      if (alive(foe(u.side)).some(e => !e.st.concealed && Math.max(Math.abs(e.x - P.x), Math.abs(e.y - P.y)) <= 2)) continue;
       consider(2.2, id, null);
     } else if (id === 'brazier') {
       const b = adjBrazier(virt, P); if (!b) continue;
       let near = 0; for (const e of alive(foe(u.side))) if (Math.hypot(e.x - b.x, e.y - b.y) < 4) near++;
       let mine = 0; for (const a of alive(u.side)) if (Math.hypot(a.x - b.x, a.y - b.y) < 4) mine++;
       const wantDark = u.side === 'coven';
-      const v = b.lit === wantDark ? -0.6 + (wantDark ? near * 0.5 + mine * 0.5 : mine * 0.6 + near * 0.4) : -5;
+      const altarB = Math.hypot(b.x - 7.5, b.y - 7.5) < 5 ? 0.6 : 0;
+      const v = b.lit === wantDark ? 0.2 + altarB + (wantDark ? near * 0.6 + mine * 0.5 : mine * 0.6 + near * 0.5) : -5;
       consider(v, id, b);
     }
   }
@@ -206,7 +210,7 @@ AI.best = function (u, canMove) {
   // Действие с места
   const a0 = AI.bestAction(u, cur, u.ap);
   if (a0 && a0.val > 0.2) opts.push({ kind: 'ab', id: a0.id, target: a0.target, score: curPos + a0.val });
-  opts.push({ kind: 'end', score: curPos + Math.min(u.ap, 3) * 0.7 });
+  opts.push({ kind: 'end', score: curPos + Math.min(u.ap, 3) * 0.45 });
   // Кровавая цена — если без неё нельзя добить
   if (u.ap === 1 && !u.bloodUsed && u.hp > 6) {
     const a2 = AI.bestAction(u, cur, 2);
@@ -221,13 +225,13 @@ AI.best = function (u, canMove) {
       const P = { x, y };
       const ps = AI.pos(u, x, y);
       const act = left > 0 ? AI.bestAction(u, P, left) : null;
-      const sc = ps + (act && act.val > 0.2 ? act.val * 0.92 : left * 0.7) - apc * 0.15 + Math.random() * 0.15;
+      const sc = ps + (act && act.val > 0.2 ? act.val * 0.92 : left * 0.45) - apc * 0.15 + Math.random() * 0.15;
       opts.push({ kind: 'move', x, y, score: sc });
     }
   }
   opts.sort((a, b) => b.score - a.score);
   const b = opts[0];
-  if (b.kind === 'move' && b.score < curPos + (a0 && a0.val > 0.2 ? a0.val : u.ap * 0.7) + 0.3) {
+  if (b.kind === 'move' && b.score < curPos + (a0 && a0.val > 0.2 ? a0.val : u.ap * 0.45) + 0.2) {
     // не дёргаться без выгоды
     const alt = opts.find(o => o.kind !== 'move'); return alt;
   }
