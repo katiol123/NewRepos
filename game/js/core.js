@@ -203,6 +203,16 @@ function coverFor(pos, side, from) {
   }
   return { cover: best, tile: tileC, any };
 }
+// Ближний бой: «удар в спину» — у цели нет укрытий рядом, либо атакующий
+// стоит с противоположной стороны от каждого её укрытия.
+function meleeFlank(pos, side, from) {
+  let dx = from.x - pos.x, dy = from.y - pos.y; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+  for (const [sx, sy] of DIRS4) {
+    if (!coverValueAt(pos.x + sx, pos.y + sy, side)) continue;
+    if (sx * dx + sy * dy > -0.3) return false;
+  }
+  return true;
+}
 function coverIcons(pos, side) { // для превью при движении
   return DIRS4.map(([sx, sy]) => ({ dx: sx, dy: sy, c: coverValueAt(pos.x + sx, pos.y + sy, side) })).filter(o => o.c);
 }
@@ -247,7 +257,7 @@ function calcAttack(att, tgt, id, opt = {}) {
   hit = br.reduce((s, p) => s + p[1], 0);
   hit = clamp(Math.round(hit), 5, 95);
   let crit = att.crit + (A.crit || 0);
-  const exposed = !A.melee ? cover === 0 : coverFor(tpos, tgt.side, from).cover === 0;
+  const exposed = !A.melee ? cover === 0 : meleeFlank(tpos, tgt.side, from);
   if (exposed) crit += A.flankCrit || (A.melee ? 10 : 20);
   crit = clamp(crit, 0, 100);
   return { hit, crit, br, cover, ctile, exposed, dist: d };

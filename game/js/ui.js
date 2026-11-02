@@ -276,7 +276,7 @@ UI.onMove = function (e) {
     const c = calcAttack(s, u, G.mode);
     const A = ABIL[G.mode];
     UI.tip(`<b>${abName(G.mode, s.side)}</b> → ${u.name}<div class="brk">${c.br.map(([k, v]) => `<div><span>${k}</span><b class="${v >= 0 ? 'pos' : 'neg'}">${v > 0 ? '+' : ''}${v}</b></div>`).join('')}</div>
-      <div class="sum">Попадание <b>${c.hit}%</b> · Крит <b>${c.crit}%</b>${c.exposed && !A.melee ? ' <span class="t-bad">(фланг)</span>' : ''}</div>
+      <div class="sum">Попадание <b>${c.hit}%</b> · Крит <b>${c.crit}%</b>${c.exposed ? ` <span class="t-bad">(${A.melee ? 'удар в спину' : 'фланг'})</span>` : ''}</div>
       <div class="t-dim">Урон ${A.dmg[0]}–${A.dmg[1]} · задеть (½ урона): ещё ${Math.min(10, 100 - c.hit)}%</div>`, e.clientX, e.clientY);
   } else if (u && s && G.mode && !R.targetCache(s, G.mode).includes(u) && UI.whyNot(s, G.mode, u)) {
     UI.tip(`<b>${abName(G.mode, s.side)}</b> → ${u.name}<br><span class="t-bad">${UI.whyNot(s, G.mode, u)}</span>`, e.clientX, e.clientY);
