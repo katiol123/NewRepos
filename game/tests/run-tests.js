@@ -1,0 +1,308 @@
+#!/usr/bin/env node
+// ============================================================
+//  Проверка «обещаний» умений и механик.
+//  Каждый тест строит маленький сценарий и проверяет, что эффект,
+//  описанный в подсказке или Кодексе, действительно достижим в игре.
+//  Запуск:  node game/tests/run-tests.js   (нужен Playwright + Chromium)
+// ============================================================
+const path = require('path');
+const { chromium } = require('playwright');
+
+const GAME_URL = 'file://' + path.resolve(__dirname, '..', 'index.html');
+const HELPERS = path.resolve(__dirname, 'helpers.js');
+
+// Каждый тест: [название (что обещано), функция внутри страницы -> строка ошибки или null]
+const TESTS = [
+  ['Удар клинком: ближняя атака игнорирует укрытия', () => {
+    const [b, t] = T.setup({ units: [['order', 'bastion', 5, 5], ['coven', 'marksman', 5, 6]], objs: [['c', 6, 6]] });
+    const c = calcAttack(b, t, 'cleave');
+    if (c.br.some(x => /укрытие/i.test(x[0]))) return 'в расчёте есть укрытие: ' + JSON.stringify(c.br);
+    return null;
+  }],
+  ['Бастион: +20 к защите и полное укрытие соседу со своей стороны', async () => {
+    const [b, m, s] = T.setup({ units: [['order', 'bastion', 5, 7], ['order', 'marksman', 5, 6], ['coven', 'marksman', 5, 11]] });
+    await useAbility(b, 'bulwark');
+    if (T.br(calcAttack(s, b, 'shot'), 'Бастион') !== -20) return 'нет −20 от Бастиона';
+    if (T.br(calcAttack(s, m, 'shot'), 'Полное укрытие') !== -40) return 'сосед не получил полное укрытие';
+    return null;
+  }],
+  ['Вызов: радиус 4, −20 по другим, стоит 2, раз за ход', async () => {
+    const [b, p, near, far] = T.setup({ units: [['order', 'bastion', 5, 5], ['order', 'priest', 9, 5], ['coven', 'marksman', 5, 8], ['coven', 'mystic', 5, 12]] });
+    const r0 = GAME.G.res.order;
+    await useAbility(b, 'taunt');
+    if (near.st.taunt !== b.id) return 'ближний враг не под Вызовом';
+    if (far.st.taunt) return 'дальний враг (7 клеток) под Вызовом';
+    if (GAME.G.res.order !== r0 - 2) return 'стоимость не 2';
+    if (T.br(calcAttack(near, p, 'shot'), 'Вызов') !== -20) return 'нет −20 по другому союзнику';
+    if (T.br(calcAttack(near, b, 'shot'), 'Вызов') !== null) return 'штраф применяется и к самому Стражу';
+    if (canUse(b, 'taunt').ok) return 'Вызов можно повторить в том же ходу';
+    return null;
+  }],
+  ['Выстрел: дальность 11, дальше 7 клеток −4 за клетку', () => {
+    const [m, t1, t2] = T.setup({ units: [['order', 'marksman', 0, 0], ['coven', 'bastion', 10, 0], ['coven', 'priest', 12, 0]] });
+    if (T.br(calcAttack(m, t1, 'shot'), 'Дальность') !== -12) return 'штраф на 10 клетках не −12';
+    if (targetsFor(m, 'shot').includes(t2)) return 'цель на 12 клетках доступна';
+    return null;
+  }],
+  ['Пронзающий выстрел: ослабляет укрытие на ступень, стоит 3 ОД', () => {
+    const [m, t] = T.setup({ units: [['order', 'marksman', 0, 6], ['coven', 'bastion', 5, 5]], objs: [['P', 4, 5]] });
+    if (!hasLOS(m, t)) return 'нет видимости (выглядывание не работает)';
+    if (T.br(calcAttack(m, t, 'shot'), 'Полное укрытие') !== -40) return 'обычный выстрел не видит полного укрытия';
+    const c = calcAttack(m, t, 'pierce');
+    if (T.br(c, 'Половинное укрытие') !== -20) return 'пробитие не ослабило укрытие: ' + JSON.stringify(c.br);
+    if (ABIL.pierce.ap !== 3) return 'стоимость не 3';
+    return null;
+  }],
+  ['Бдение: 2 ответных выстрела при 3 ОД, срабатывает на движение', async () => {
+    const [m, e] = T.setup({ units: [['order', 'marksman', 2, 2], ['coven', 'bastion', 2, 10]] });
+    await useAbility(m, 'watch');
+    if (m.st.watch !== 2) return 'выстрелов не 2: ' + m.st.watch;
+    const undo = T.rigConst(0.01); // все броски — попадания
+    try { const r = reach(e); await moveUnit(e, pathFrom(r, 2, 8)); } finally { undo(); }
+    if (m.st.watch === 2) return 'Бдение не сработало на движение';
+    if (e.hp === e.maxHp) return 'ответный выстрел не нанёс урона';
+    return null;
+  }],
+  ['Искра / Теневой разряд: не страдает от тьмы', () => {
+    const [my, ma, t, cm] = T.setup({ units: [['order', 'mystic', 2, 2], ['order', 'marksman', 2, 3], ['coven', 'bastion', 6, 2], ['coven', 'marksman', 6, 6]] });
+    if (T.br(calcAttack(my, t, 'bolt'), 'Цель во тьме') !== null) return 'магия получила штраф тьмы';
+    if (T.br(calcAttack(ma, t, 'shot'), 'Цель во тьме') !== -15) return 'обычный выстрел Ордена во тьму без −15';
+    if (T.br(calcAttack(cm, ma, 'shot'), 'Цель во тьме') !== null) return 'Ковен получил штраф тьмы';
+    return null;
+  }],
+  ['Огненный вал: бьёт и своих, крушит половинные укрытия, поджигает, огонь Ордена светит', async () => {
+    const [my, ally, en] = T.setup({ units: [['order', 'mystic', 2, 2], ['order', 'bastion', 7, 2], ['coven', 'marksman', 6, 2]], objs: [['h', 6, 3], ['c', 5, 2]] });
+    await useAbility(my, 'inferno', { x: 6, y: 2 });
+    const G = GAME.G;
+    if (en.hp === en.maxHp) return 'враг не получил урона';
+    if (ally.hp === ally.maxHp) return 'союзник в радиусе не получил урона';
+    if (G.map[3][6].obj) return 'надгробие (4 прочности) уцелело';
+    if (G.map[2][5].obj) return 'саркофаг (5 прочности) уцелел';
+    if (!(G.map[2][6].burn > 0)) return 'земля не горит';
+    if (!isLit(6, 2)) return 'огонь Ордена не освещает клетку';
+    return null;
+  }],
+  ['Чёрное пламя: гасит свет, враг, стреляющий из него, получает −10', async () => {
+    const [cm, om, t] = T.setup({ side: 'coven', units: [['coven', 'mystic', 2, 2], ['order', 'marksman', 6, 3], ['coven', 'bastion', 10, 3]], objs: [['B', 6, 5]] });
+    if (!isLit(6, 2)) return 'жаровня не светит заранее';
+    await useAbility(cm, 'inferno', { x: 6, y: 2 });
+    if (isLit(6, 2)) return 'Чёрное пламя не погасило свет';
+    if (om.dead) return 'стрелок погиб, проверка невозможна';
+    if (T.br(calcAttack(om, t, 'shot'), 'Чёрное пламя') !== -10) return 'нет −10 при стрельбе из пламени';
+    return null;
+  }],
+  ['Удар из тени: можно подкрасться вплотную скрытым, +20, после удара — раскрыт', async () => {
+    const [s, t] = T.setup({ units: [['order', 'shade', 5, 1], ['coven', 'marksman', 5, 5]], objs: [['c', 5, 4]] });
+    s.st.concealed = true;
+    await moveUnit(s, pathFrom(reach(s), 5, 6));
+    if (!s.st.concealed) return 'сокрытие спало при подходе';
+    const c = calcAttack(s, t, 'backstab');
+    if (T.br(c, 'Из сокрытия') !== 20) return 'нет +20 из сокрытия';
+    s.ap = 2; await useAbility(s, 'backstab', t);
+    if (s.st.concealed) return 'после атаки не раскрыт';
+    return null;
+  }],
+  ['Удар в спину: крит со спины, без бонуса сбоку и со стороны укрытия', () => {
+    const [s, t] = T.setup({ units: [['order', 'shade', 4, 4], ['coven', 'marksman', 4, 3]], objs: [['c', 4, 2]] });
+    const pos = (x, y) => { s.x = x; s.y = y; return calcAttack(s, t, 'backstab').exposed; };
+    if (!pos(4, 4)) return 'сзади нет бонуса';
+    if (!pos(5, 4)) return 'сзади-по-диагонали нет бонуса';
+    if (pos(5, 3)) return 'сбоку есть бонус';
+    if (pos(5, 2)) return 'со стороны укрытия есть бонус';
+    return null;
+  }],
+  ['Метательный нож: 1 ОД, дальность 5', () => {
+    const [s, a, b] = T.setup({ units: [['order', 'shade', 0, 0], ['coven', 'bastion', 5, 0], ['coven', 'priest', 6, 0]] });
+    const ts = targetsFor(s, 'knife');
+    if (!ts.includes(a)) return 'цель на 5 клетках недоступна';
+    if (ts.includes(b)) return 'цель на 6 клетках доступна';
+    if (ABIL.knife.ap !== 1) return 'стоимость не 1';
+    return null;
+  }],
+  ['Сокрытие (Ковен): только во тьме, не ближе 2 к врагу, свет раскрывает', async () => {
+    let [s, e] = T.setup({ side: 'coven', units: [['coven', 'shade', 3, 3], ['order', 'marksman', 3, 5]], objs: [['B', 12, 12]] });
+    if (canUse(s, 'vanish').ok) return 'можно скрыться в 2 клетках от врага';
+    e.x = 3; e.y = 9;
+    if (!canUse(s, 'vanish').ok) return 'нельзя скрыться во тьме: ' + canUse(s, 'vanish').why;
+    s.x = 11; s.y = 12;
+    if (canUse(s, 'vanish').ok) return 'можно скрыться на свету';
+    s.x = 3; s.y = 3; await useAbility(s, 'vanish');
+    if (!s.st.concealed) return 'не скрылась';
+    if (targetsFor(e, 'shot').includes(s)) return 'враг может выбрать скрытую целью';
+    s.ap = 3; await moveUnit(s, pathFrom(reach(s), 6, 6));
+    s.x = 11; s.y = 11; refreshLight();
+    if (s.st.concealed) return 'свет не раскрыл Тень Ковена';
+    return null;
+  }],
+  ['Покаяние (Орден): 2 ОД, работает на свету, свет не раскрывает', async () => {
+    const [s, e] = T.setup({ units: [['order', 'shade', 11, 11], ['coven', 'marksman', 3, 3]], objs: [['B', 12, 12]] });
+    if (!isLit(11, 11)) return 'клетка не освещена';
+    if (!canUse(s, 'vanish').ok) return 'нельзя использовать на свету';
+    await useAbility(s, 'vanish');
+    if (s.ap !== 1) return 'стоимость не 2 ОД (осталось ' + s.ap + ')';
+    refreshLight();
+    if (!s.st.concealed) return 'свет раскрыл Клинка';
+    return null;
+  }],
+  ['Сокрытие: конец хода вплотную к врагу раскрывает', async () => {
+    const [s, e] = T.setup({ units: [['order', 'shade', 4, 4], ['coven', 'marksman', 4, 5]] });
+    s.st.concealed = true;
+    endTurn();
+    if (s.st.concealed) return 'остался скрытым рядом с врагом';
+    return null;
+  }],
+  ['Засада: шаг на скрытого врага — остановка, раскрытие, возврат ОД', async () => {
+    const [u, s] = T.setup({ units: [['order', 'bastion', 2, 2], ['coven', 'shade', 2, 4]] });
+    s.st.concealed = true;
+    await moveUnit(u, pathFrom(reach(u), 2, 9));
+    if (s.st.concealed) return 'скрытый не раскрыт';
+    if (u.y > 3) return 'не остановился (y=' + u.y + ')';
+    if (u.ap < 2) return 'ОД не возвращены (осталось ' + u.ap + ')';
+    return null;
+  }],
+  ['Кара / Порча: дальность 7', () => {
+    const [p, a, b] = T.setup({ units: [['order', 'priest', 0, 0], ['coven', 'bastion', 7, 0], ['coven', 'mystic', 8, 0]] });
+    const ts = targetsFor(p, 'smite');
+    if (!ts.includes(a) || ts.includes(b)) return 'дальность не 7';
+    return null;
+  }],
+  ['Исцеление: через колонну, дальность 5, +5, гасит огонь', async () => {
+    const [p, m, far] = T.setup({ units: [['order', 'priest', 1, 5], ['order', 'mystic', 3, 5], ['order', 'bastion', 7, 5]], objs: [['P', 2, 5]] });
+    m.hp = 3; far.hp = 5; GAME.G.map[5][3].burn = 3;
+    const ts = targetsFor(p, 'heal');
+    if (!ts.includes(m)) return 'союзник за колонной недоступен';
+    if (ts.includes(far)) return 'союзник на 6 клетках доступен';
+    await useAbility(p, 'heal', m);
+    if (m.hp !== 8) return 'лечение не +5 (ОЗ ' + m.hp + ')';
+    if (GAME.G.map[5][3].burn) return 'огонь не погашен';
+    return null;
+  }],
+  ['Благословение: +15 меткости и защиты на 2 хода', async () => {
+    const [p, m, e] = T.setup({ units: [['order', 'priest', 2, 2], ['order', 'marksman', 3, 2], ['coven', 'marksman', 8, 2]] });
+    await useAbility(p, 'hex', m);
+    if (T.br(calcAttack(m, e, 'shot'), 'Благословение') !== 15) return 'нет +15 к меткости';
+    if (T.br(calcAttack(e, m, 'shot'), 'Благословение') !== -15) return 'нет +15 к защите';
+    await startTurn('coven'); await startTurn('order');
+    if (!(m.st.blessed > 0)) return 'спало раньше второго хода';
+    await startTurn('coven'); await startTurn('order');
+    if (m.st.blessed > 0) return 'длится больше 2 ходов';
+    return null;
+  }],
+  ['Проклятие: −15 меткости и защиты на 2 хода врага', async () => {
+    const [p, e, a] = T.setup({ side: 'coven', units: [['coven', 'priest', 2, 2], ['order', 'marksman', 6, 2], ['coven', 'marksman', 9, 2]] });
+    await useAbility(p, 'hex', e);
+    if (T.br(calcAttack(e, a, 'shot'), 'Проклятие') !== -15) return 'нет −15 к меткости';
+    if (T.br(calcAttack(a, e, 'shot'), 'Проклятие') !== 15) return 'нет −15 к защите';
+    await startTurn('order'); await startTurn('coven');
+    if (!(e.st.cursed > 0)) return 'спало раньше второго хода врага';
+    await startTurn('order'); await startTurn('coven');
+    if (e.st.cursed > 0) return 'длится больше 2 ходов';
+    return null;
+  }],
+  ['Кровавая цена: −3 ОЗ, +1 ОД, раз за ход', async () => {
+    const [u] = T.setup({ units: [['order', 'bastion', 2, 2]] });
+    u.ap = 2; await useAbility(u, 'blood');
+    if (u.ap !== 3 || u.hp !== u.maxHp - 3) return `ОД ${u.ap}, ОЗ ${u.hp}`;
+    if (canUse(u, 'blood').ok) return 'можно повторить в том же ходу';
+    return null;
+  }],
+  ['Жаровня: только рядом, гасит и зажигает свет', async () => {
+    const [u, f] = T.setup({ units: [['order', 'bastion', 5, 6], ['order', 'priest', 10, 10]], objs: [['B', 5, 5]] });
+    if (canUse(f, 'brazier').ok) return 'доступно без соседней жаровни';
+    if (!isLit(5, 7)) return 'жаровня не светит';
+    await useAbility(u, 'brazier', GAME.G.map[5][5]);
+    if (isLit(5, 7)) return 'не погасла';
+    u.ap = 3; await useAbility(u, 'brazier', GAME.G.map[5][5]);
+    if (!isLit(5, 7)) return 'не зажглась';
+    return null;
+  }],
+  ['Стойкость: +8 защиты за ОД, не больше 24', async () => {
+    const [a, b] = T.setup({ units: [['order', 'bastion', 2, 2], ['order', 'priest', 6, 6]] });
+    a.ap = 2; b.ap = 4; endTurn();
+    if (a.guard !== 16) return 'за 2 ОД не 16: ' + a.guard;
+    if (b.guard !== 24) return 'за 4 ОД не 24: ' + b.guard;
+    return null;
+  }],
+  ['Задевание: промах в пределах 10% — половина урона', async () => {
+    const [m, t] = T.setup({ units: [['order', 'marksman', 2, 2], ['coven', 'bastion', 2, 6]] });
+    const c = calcAttack(m, t, 'shot');
+    const undo = T.rig([(c.hit + 5) / 100, 0.99]);
+    let out; try { out = await doAttack(m, t, 'shot'); } finally { undo(); }
+    if (out !== 'graze') return 'исход ' + out;
+    if (t.maxHp - t.hp !== Math.floor(ABIL.shot.dmg[1] / 2)) return 'урон ' + (t.maxHp - t.hp);
+    return null;
+  }],
+  ['Свет веры +8 / Дети ночи +10 / стрельба во тьму −15', () => {
+    const [om, cm, ot] = T.setup({ units: [['order', 'marksman', 5, 6], ['coven', 'marksman', 5, 12], ['order', 'bastion', 13, 13]], objs: [['B', 5, 5]] });
+    const c = calcAttack(om, cm, 'shot');
+    if (T.br(c, 'Свет веры') !== 8) return 'нет +8 на свету';
+    if (T.br(c, 'Дети ночи') !== -10) return 'нет +10 к защите Ковена во тьме';
+    if (T.br(c, 'Цель во тьме') !== -15) return 'нет −15 по цели во тьме';
+    return null;
+  }],
+  ['Рассвет: всё освещено, скрытые раскрыты, лечение 2, перезарядка 4 раунда', async () => {
+    const [o, s] = T.setup({ units: [['order', 'bastion', 2, 2], ['coven', 'shade', 10, 10]] });
+    s.st.concealed = true; o.hp = o.maxHp - 5; GAME.G.res.order = 7;
+    await useUlt('order');
+    if (!isLit(10, 10) || !isLit(0, 15)) return 'не всё освещено';
+    if (s.st.concealed) return 'скрытый не раскрыт';
+    if (o.hp !== o.maxHp - 3) return 'лечение не 2';
+    GAME.G.res.order = 10;
+    if (ultReady('order')) return 'нет перезарядки';
+    GAME.G.round += 4;
+    if (!ultReady('order')) return 'не перезарядилась за 4 раунда';
+    return null;
+  }],
+  ['Затмение: жаровни гаснут, Орден −10, Ковен лечится на 2', async () => {
+    const [c, o, t] = T.setup({ side: 'coven', units: [['coven', 'bastion', 2, 2], ['order', 'marksman', 5, 6], ['coven', 'priest', 5, 10]], objs: [['B', 5, 5]] });
+    c.hp = c.maxHp - 5;
+    await useUlt('coven');
+    if (isLit(5, 6)) return 'жаровня светит';
+    if (T.br(calcAttack(o, t, 'shot'), 'Ужас затмения') !== -10) return 'нет −10 Ордену';
+    if (c.hp !== c.maxHp - 3) return 'лечение не 2';
+    return null;
+  }],
+  ['Алтарь: очко со 2-го раунда, враг рядом блокирует, 4 очка — победа', async () => {
+    const [o, c] = T.setup({ round: 2, units: [['order', 'bastion', 7, 7], ['coven', 'bastion', 2, 2]] });
+    await startTurn('order');
+    if (GAME.G.altar.order !== 1) return 'очко не начислено';
+    c.x = 6; c.y = 6; await startTurn('order');
+    if (GAME.G.altar.order !== 1) return 'враг вплотную не заблокировал';
+    c.x = 2; c.y = 2; GAME.G.altar.order = 3; await startTurn('order');
+    if (GAME.G.winner !== 'order') return 'нет ритуальной победы при 4 очках';
+    return null;
+  }],
+  ['Видимость симметрична на боевой карте', () => {
+    T.setup({ keepMap: true });
+    const fl = []; for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (!GAME.G.map[y][x].obj) fl.push({ x, y });
+    for (const a of fl) for (const b of fl) if (hasLOS(a, b) !== hasLOS(b, a)) return `(${a.x},${a.y}) ↔ (${b.x},${b.y})`;
+    return null;
+  }],
+  ['Укрытие засчитывается, только если оно между целью и стрелком', () => {
+    const [t, front, side] = T.setup({ units: [['coven', 'bastion', 5, 5], ['order', 'marksman', 5, 10], ['order', 'priest', 10, 5]], objs: [['c', 5, 6]] });
+    if (T.br(calcAttack(front, t, 'shot'), 'Половинное укрытие') !== -20) return 'спереди нет укрытия';
+    if (T.br(calcAttack(side, t, 'shot'), 'Половинное укрытие') !== null) return 'сбоку засчитано укрытие';
+    return null;
+  }],
+];
+
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto(GAME_URL);
+  await page.addScriptTag({ path: HELPERS });
+  await page.waitForFunction(() => window.GAME && window.T);
+  let fail = 0;
+  for (const [name, fn] of TESTS) {
+    let res;
+    try { res = await page.evaluate(`(${fn.toString()})()`); }
+    catch (e) { res = 'исключение: ' + e.message.split('\n')[0]; }
+    if (pageErrors.length) { res = (res ? res + '; ' : '') + 'ошибка страницы: ' + pageErrors.splice(0).join(' | '); }
+    if (res) { fail++; console.log(`✗ ${name}\n    → ${res}`); } else console.log(`✓ ${name}`);
+  }
+  await browser.close();
+  console.log(`\n${TESTS.length - fail}/${TESTS.length} проверок пройдено`);
+  process.exit(fail ? 1 : 0);
+})();

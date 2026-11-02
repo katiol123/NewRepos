@@ -557,7 +557,7 @@ async function castInferno(u, c) {
   const area = aoeArea(c.x, c.y);
   for (const p of area) {
     const t = tile(p.x, p.y);
-    if (t.obj && t.obj !== 'P') await damageObject(p.x, p.y, 3);
+    if (t.obj && t.obj !== 'P') await damageObject(p.x, p.y, 5);
     if (!t.obj) { t.burn = 4; t.burnSide = u.side; }
   }
   refreshLight();
