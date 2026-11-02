@@ -713,6 +713,8 @@ R.frame = function (dt) {
   FX.draw(c, time);
   // верхний слой: полоски ОЗ, иконки
   for (const u of G.units) if (!u.dead && G.scene === 'battle') R.drawUnitHud(c, u, time);
+  if (R._spReq && G.sel === R._spReq.u && !G.mode && !G.busy) R.drawShotPreview(c, R._spReq.u, R._spReq.h, R._spReq.left, time);
+  R._spReq = null;
   R.drawTargetHud(c, time);
   FX.drawTexts(c);
 
@@ -1004,6 +1006,8 @@ R.drawHighlights = function (c, time) {
     c.stroke(); c.setLineDash([]); c.restore();
     const pe = iso(h.x, h.y);
     diamond(c, pe.x, pe.y, 0.8); c.strokeStyle = col; c.lineWidth = 2; c.stroke();
+    // линии прицела к врагам из этой клетки
+    R._spReq = { u, h: { x: h.x, y: h.y }, left: u.ap - a };
     // значки укрытий в точке
     for (const ci of coverIcons(h, u.side)) {
       const q = iso(h.x + ci.dx * 0.45, h.y + ci.dy * 0.45);
@@ -1020,6 +1024,60 @@ R.drawHighlights = function (c, time) {
     const watchers = alive(foe(u.side)).filter(w => w.st.watch > 0 && path.some(s => dist(w, s) <= 11 && hasLOS(w, s)));
     if (watchers.length && !u.st.concealed) { c.fillStyle = '#ffe08a'; c.fillText('⚠ под Бдением', pe.x, pe.y + 12 + fz * 2.3); }
     if (path.some(s => tile(s.x, s.y).burn > 0)) { c.fillStyle = '#ff9d3a'; c.fillText('огонь: −2 ОЗ', pe.x, pe.y + 12 + fz * (watchers.length ? 3.5 : 2.3)); }
+  }
+};
+// Какой атакой боец ударит врага из клетки P (ближняя — если вплотную, иначе основная дальняя)
+function previewAttackId(u, P, e) {
+  const list = CLASSES[u.cls].abil.filter(id => abType(id, u.side) === 'attack' && id !== 'pierce');
+  const adj = Math.max(Math.abs(e.x - P.x), Math.abs(e.y - P.y)) <= 1;
+  const melee = list.find(id => ABIL[id].melee);
+  if (adj && melee && meleeOk(P, e)) return melee;
+  return list.find(id => !ABIL[id].melee) || null;
+}
+R.drawShotPreview = function (c, u, P, left, time) {
+  const virt = Object.assign({}, u, { x: P.x, y: P.y, st: Object.assign({}, u.st) });
+  const key = [u.id, P.x, P.y, left, G.turnCount, G.units.map(v => v.dead ? 'd' : v.x + ',' + v.y + v.hp + (v.st.concealed ? 'c' : '')).join('|')].join(':');
+  if (!R._sp || R._sp.key !== key) {
+    const rows = [];
+    for (const e of alive(foe(u.side))) {
+      if (e.st.concealed) continue;
+      const id = previewAttackId(u, P, e); if (!id) continue;
+      const A = ABIL[id];
+      if (dist(P, e) > A.range + 0.01) continue;
+      if (!A.melee && !hasLOS(P, e)) continue;
+      const calc = calcAttack(virt, e, id, { from: P });
+      rows.push({ e, id, calc, enough: left >= A.ap });
+    }
+    R._sp = { key, rows };
+  }
+  const fz = 13 / R.cam.z;
+  const a = iso(P.x, P.y);
+  const placed = [];
+  for (const r of R._sp.rows) {
+    const b = iso(r.e.x, r.e.y);
+    const h = r.calc.hit;
+    const col = !r.enough ? '#8a8494' : h >= 70 ? '#7dff9e' : h >= 40 ? '#f2c75c' : '#ff6a5c';
+    // тонкая линия
+    c.save();
+    c.strokeStyle = rgba(col, r.enough ? 0.75 : 0.4); c.lineWidth = 1.2 / Math.max(0.6, R.cam.z);
+    c.setLineDash([3, 4]); c.lineDashOffset = -time * 18;
+    c.beginPath(); c.moveTo(a.x, a.y - 22); c.lineTo(b.x, b.y - 26); c.stroke();
+    c.setLineDash([]);
+    // метка у врага (сбоку от полоски ОЗ)
+    const txt = h + '%' + (r.calc.exposed ? (ABIL[r.id].melee ? ' спина' : ' фланг') : '') + (r.enough ? '' : ' · мало ОД');
+    c.font = `700 ${fz}px Cinzel, Georgia, serif`;
+    const tw = c.measureText(txt).width;
+    const lx = b.x; let ly = b.y - 90;
+    // не накладывать метки друг на друга
+    for (let k = 0; k < 6; k++) {
+      const hit = placed.find(q => Math.abs(q.x - lx) < (q.w + tw) / 2 + 8 && Math.abs(q.y - ly) < fz * 1.5);
+      if (!hit) break; ly = hit.y - fz * 1.6;
+    }
+    placed.push({ x: lx, y: ly, w: tw + 10 });
+    c.fillStyle = 'rgba(8,5,10,0.85)'; c.fillRect(lx - tw / 2 - 5, ly - fz, tw + 10, fz * 1.35);
+    c.strokeStyle = rgba(col, 0.9); c.lineWidth = 1 / R.cam.z; c.strokeRect(lx - tw / 2 - 5, ly - fz, tw + 10, fz * 1.35);
+    c.fillStyle = col; c.textAlign = 'center'; c.fillText(txt, lx, ly);
+    c.restore();
   }
 };
 R.coverShield = function (c, x, y, v) {
