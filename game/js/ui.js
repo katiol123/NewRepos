@@ -227,7 +227,7 @@ UI.unitPanel = function () {
 
 UI.pickAbility = function (id) {
   const u = G.sel; if (!u || !UI.humanTurn() || u.side !== G.side) return;
-  const chk = canUse(u, id); if (!chk.ok) { UI.toast(chk.why); return; }
+  const chk = canUse(u, id); if (!chk.ok) { UI.toast(`${abName(id, u.side)}: ${chk.why === 'Мало ОД' ? `нужно ${abCost(u, id)} ОД, осталось ${u.ap}` : chk.why}`); return; }
   SFX.play('click');
   const ty = abType(id, u.side);
   if (ty === 'self') { useAbility(u, id); return; }
@@ -278,6 +278,8 @@ UI.onMove = function (e) {
     UI.tip(`<b>${abName(G.mode, s.side)}</b> → ${u.name}<div class="brk">${c.br.map(([k, v]) => `<div><span>${k}</span><b class="${v >= 0 ? 'pos' : 'neg'}">${v > 0 ? '+' : ''}${v}</b></div>`).join('')}</div>
       <div class="sum">Попадание <b>${c.hit}%</b> · Крит <b>${c.crit}%</b>${c.exposed && !A.melee ? ' <span class="t-bad">(фланг)</span>' : ''}</div>
       <div class="t-dim">Урон ${A.dmg[0]}–${A.dmg[1]} · задеть (½ урона): ещё ${Math.min(10, 100 - c.hit)}%</div>`, e.clientX, e.clientY);
+  } else if (u && s && G.mode && !R.targetCache(s, G.mode).includes(u) && UI.whyNot(s, G.mode, u)) {
+    UI.tip(`<b>${abName(G.mode, s.side)}</b> → ${u.name}<br><span class="t-bad">${UI.whyNot(s, G.mode, u)}</span>`, e.clientX, e.clientY);
   } else if (u) {
     UI.tip(UI.unitTip(u), e.clientX, e.clientY);
   } else UI.tip(null);
@@ -296,6 +298,19 @@ UI.unitTip = function (u) {
   return `<b class="c-${u.side}">${u.name}</b><br><span class="t-dim">${u.title} · ${CLASSES[u.cls].role}</span><br>ОЗ ${u.hp}/${u.maxHp} · Мет. ${u.aim} · Защ. ${u.def}${st.length ? '<br>' + st.join(', ') : ''}<br><span class="t-dim">${CLASSES[u.cls].desc}</span>`;
 };
 
+UI.whyNot = function (s, id, t) {
+  const A = ABIL[id]; const ty = abType(id, s.side);
+  const wantAlly = ty === 'ally';
+  if (wantAlly && t.side !== s.side) return 'Нужен союзник';
+  if (!wantAlly && t.side === s.side) return null;
+  const d = dist(s, t);
+  if (d > A.range + 0.01) return `Слишком далеко: ${d.toFixed(1)} кл. при дальности ${A.range}`;
+  if (A.melee && !meleeOk(s, t)) return 'Угол стены мешает удару';
+  if (!A.melee && t !== s && !hasLOS(s, t)) return 'Нет прямой видимости — мешает стена или колонна';
+  if (id === 'heal' && t.hp >= t.maxHp && tile(t.x, t.y).burn <= 0) return 'Цель полностью здорова';
+  if (id === 'hex' && s.side === 'order' && t.st.blessed > 0) return 'Уже благословлён';
+  return 'Недопустимая цель';
+};
 UI.onDown = function (e) {
   if (G.scene !== 'battle') return;
   if (e.button === 1 || (e.button === 0 && e.shiftKey)) { UI.drag = { x: e.clientX, y: e.clientY }; return; }
@@ -317,6 +332,7 @@ UI.onDown = function (e) {
       return;
     }
     if (u && R.targetCache(s, G.mode).includes(u)) { useAbility(s, G.mode, u); return; }
+    if (u && abType(G.mode, s.side) === 'ally') { UI.toast(UI.whyNot(s, G.mode, u)); return; }
     if (u && u.side === G.side) { selectUnit(u); return; }
     G.mode = null; UI.tip(null); UI.refresh(); return;
   }

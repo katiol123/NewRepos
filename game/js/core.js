@@ -285,7 +285,7 @@ function canUse(u, id) {
   if (id === 'watch' && u.st.watch) return { ok: false, why: 'Уже активно' };
   if (id === 'taunt' && !targetsFor(u, id).length) return { ok: false, why: 'Нет врагов рядом' };
   const ty = abType(id, u.side);
-  if ((ty === 'attack' || ty === 'ally' || ty === 'enemy' || ty === 'brazier') && !targetsFor(u, id).length) return { ok: false, why: 'Нет целей' };
+  if ((ty === 'attack' || ty === 'ally' || ty === 'enemy' || ty === 'brazier') && !targetsFor(u, id).length) return { ok: false, why: id === 'heal' ? 'Нет раненых союзников в радиусе ' + ABIL.heal.range + ' и в прямой видимости' : 'Нет целей в досягаемости' };
   return { ok: true };
 }
 function targetsFor(u, id, from) {
