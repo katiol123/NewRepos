@@ -6,7 +6,7 @@ const TW = 64, TH = 32;          // размер изометрического 
 const MW = 16, MH = 16;          // размер карты
 const MAX_AP = 3;                // очки действий на юнита
 const RES_MAX = 10;              // максимум ресурса фракции
-const ALTAR_WIN = 5;             // очков алтаря для ритуальной победы
+const ALTAR_WIN = 4;             // очков алтаря для ритуальной победы
 const MAX_ROUNDS = 20;
 const GUARD_PER_AP = 8;          // защита за каждое несгоревшее ОД
 
@@ -38,7 +38,7 @@ const FACTIONS = {
     id: 'order', foe: 'coven', name: 'Орден Пепельного Света', short: 'Орден', gen: 'Ордена',
     res: 'Вера', motto: 'Свет — это клинок, а пепел — молитва.',
     passive: 'Свет веры: +10 к меткости, когда боец стоит на свету.',
-    ult: { name: 'Рассвет', cost: 6, desc: 'На 2 хода тьма рассеяна по всему полю, сокрытые враги раскрыты, все союзники исцеляются на 3.' },
+    ult: { name: 'Рассвет', cost: 7, desc: 'До вашего следующего хода тьма рассеяна по всему полю, сокрытые враги раскрыты, все союзники исцеляются на 2.' },
     pal: { cloth: '#d8ccb0', cloth2: '#8e1c26', metal: '#c8b27a', metal2: '#6f5f3b', skin: '#c99c7c', dark: '#2a2016',
       glow: '#ffc45e', glow2: '#ff7a2e', eye: '#ffeab0', ui: '#e9c178' },
   },
@@ -46,30 +46,30 @@ const FACTIONS = {
     id: 'coven', foe: 'order', name: 'Ковен Пустой Луны', short: 'Ковен', gen: 'Ковена',
     res: 'Скверна', motto: 'Мы — тени, что остаются, когда гаснут свечи.',
     passive: 'Дети ночи: нет штрафа меткости при стрельбе во тьму, +10 к защите во тьме.',
-    ult: { name: 'Затмение', cost: 6, desc: 'На 2 хода гаснут все жаровни и огни, враги охвачены ужасом (−10 к меткости).' },
+    ult: { name: 'Затмение', cost: 7, desc: 'До вашего следующего хода гаснут все жаровни и огни, враги охвачены ужасом (−10 к меткости), союзники исцеляются на 2.' },
     pal: { cloth: '#2c2337', cloth2: '#4c3569', metal: '#a9a797', metal2: '#57564d', skin: '#ddd5bf', dark: '#0f0b14',
       glow: '#a77bff', glow2: '#4fe3b0', eye: '#d6fbff', ui: '#b597ff' },
   },
 };
 
 const CLASSES = {
-  bastion: { hp: 14, mov: 4, aim: 65, def: 5, crit: 5, role: 'Страж',
+  bastion: { hp: 17, mov: 4, aim: 65, def: 5, crit: 5, role: 'Страж',
     names: { order: 'Храмовник', coven: 'Костяной страж' },
     abil: ['cleave', 'bulwark', 'taunt'],
     desc: 'Живая стена. Стоящие рядом союзники получают за ним полное укрытие.' },
-  marksman: { hp: 9, mov: 4, aim: 75, def: 0, crit: 10, role: 'Стрелок',
+  marksman: { hp: 11, mov: 4, aim: 75, def: 0, crit: 10, role: 'Стрелок',
     names: { order: 'Арбалетчица', coven: 'Костяной лучник' },
     abil: ['shot', 'pierce', 'watch'],
     desc: 'Дальний бой и единственный, кто умеет держать Бдение.' },
-  mystic: { hp: 8, mov: 4, aim: 70, def: 0, crit: 5, role: 'Мистик',
+  mystic: { hp: 10, mov: 4, aim: 70, def: 0, crit: 5, role: 'Мистик',
     names: { order: 'Пиромант', coven: 'Гексер' },
     abil: ['bolt', 'inferno'],
     desc: 'Разрушает укрытия, поджигает землю. Огонь Ордена светит, пламя Ковена пожирает свет.' },
-  shade: { hp: 8, mov: 6, aim: 70, def: 10, crit: 15, role: 'Тень',
+  shade: { hp: 10, mov: 6, aim: 70, def: 10, crit: 15, role: 'Тень',
     names: { order: 'Клинок покаяния', coven: 'Тень' },
     abil: ['backstab', 'knife', 'vanish'],
     desc: 'Быстрый убийца. Во тьме может стать невидимым для врага.' },
-  priest: { hp: 10, mov: 4, aim: 60, def: 0, crit: 5, role: 'Жрец',
+  priest: { hp: 12, mov: 4, aim: 60, def: 0, crit: 5, role: 'Жрец',
     names: { order: 'Капеллан', coven: 'Костяная ведьма' },
     abil: ['smite', 'heal', 'hex'],
     desc: 'Лечит, благословляет или проклинает. Тратит ресурс фракции.' },
@@ -91,8 +91,8 @@ const ABIL = {
     dmg: [4, 6], aim: 20, crit: 10, icon: 'sword', desc: 'Ближняя атака. Укрытия не помогают цели.' },
   bulwark: { name: 'Бастион', ap: 1, type: 'self', icon: 'shield',
     desc: 'До вашего следующего хода: +20 к защите, а союзники рядом получают полное укрытие с вашей стороны.' },
-  taunt: { name: 'Вызов', ap: 1, res: 2, type: 'self', icon: 'horn',
-    desc: 'Враги в радиусе 5 (в прямой видимости) в свой ход получают −25 к меткости по всем, кроме вас.' },
+  taunt: { name: 'Вызов', ap: 1, res: 3, type: 'self', icon: 'horn',
+    desc: 'Раз за ход. Враги в радиусе 4 (в прямой видимости) в свой ход получают −15 к меткости по всем, кроме вас.' },
   shot: { name: { order: 'Арбалетный болт', coven: 'Костяная стрела' }, ap: 2, type: 'attack', range: 11,
     dmg: [3, 5], aim: 0, crit: 0, icon: 'bow', proj: 'arrow', desc: 'Дальний выстрел. Дальше 7 клеток: −4 за клетку.' },
   pierce: { name: 'Пронзающий выстрел', ap: 3, type: 'attack', range: 11, dmg: [4, 6], aim: 15, crit: 10, pierce: true,
@@ -103,12 +103,12 @@ const ABIL = {
     magic: true, ignoreDark: true, icon: 'bolt', proj: 'orb', desc: 'Магический снаряд. Не страдает от тьмы.' },
   inferno: { name: { order: 'Огненный вал', coven: 'Чёрное пламя' }, ap: 3, res: 3, type: 'aoe', range: 7, radius: 1.5,
     dmg: [3, 5], icon: 'fire', desc: 'Площадь. Бьёт всех (и своих!), крушит укрытия, поджигает землю на 2 раунда. Пламя Ордена даёт свет, пламя Ковена — гасит его.' },
-  backstab: { name: 'Удар из тени', ap: 2, type: 'attack', melee: true, range: 1.5, dmg: [4, 6], aim: 20, crit: 20,
-    flankCrit: 35, icon: 'dagger', desc: 'Если у цели нет укрытия от вас: +35 к криту. Из сокрытия: +20 к меткости.' },
+  backstab: { name: 'Удар из тени', ap: 2, type: 'attack', melee: true, range: 1.5, dmg: [4, 6], aim: 20, crit: 10,
+    flankCrit: 25, icon: 'dagger', desc: 'Если у цели нет укрытия от вас: +25 к криту. Из сокрытия: +20 к меткости.' },
   knife: { name: 'Метательный нож', ap: 1, type: 'attack', range: 5, dmg: [2, 3], aim: 0, crit: 10, icon: 'knife',
     proj: 'knife', desc: 'Дешёвый бросок на 1 ОД.' },
   vanish: { name: 'Сокрытие', ap: 1, type: 'self', icon: 'hood',
-    desc: 'Только во тьме. Враг не может выбрать вас целью, пока вы не атакуете, не шагнёте на свет или враг не подойдёт вплотную.' },
+    desc: 'Только во тьме и если врагов нет ближе 2 клеток. Враг не может выбрать вас целью, пока вы не атакуете, не шагнёте на свет или враг не подойдёт вплотную.' },
   smite: { name: { order: 'Кара', coven: 'Порча' }, ap: 2, type: 'attack', range: 7, dmg: [2, 4], aim: 5, magic: true,
     icon: 'smite', proj: 'beam', desc: 'Священный (или нечестивый) луч.' },
   heal: { name: { order: 'Исцеление', coven: 'Сращивание костей' }, ap: 2, res: 2, type: 'ally', range: 5, heal: 5,

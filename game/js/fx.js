@@ -22,8 +22,8 @@ const W = (x, y) => iso(x, y);
 FX.float = function (x, y, text, color, scale = 1, dy = 0) {
   const p = W(x, y);
   // не накладывать тексты
-  let off = 0; for (const t of FX.texts) if (Math.abs(t.x - p.x) < 30 && t.age < 0.5) off += 14;
-  FX.texts.push({ x: p.x, y: p.y - 70 - off - dy, text, color, scale, age: 0, life: 1.6 });
+  let off = 0; for (const t of FX.texts) if (Math.abs(t.x - p.x) < 30 && t.age < 0.5) off += 17;
+  FX.texts.push({ x: p.x, y: p.y - 96 - off - dy, text, color, scale, age: 0, life: 1.6 });
 };
 FX.drawTexts = function (c) {
   for (const t of FX.texts) {
@@ -39,7 +39,7 @@ FX.drawTexts = function (c) {
 FX.shake = function (n) { R.shakeAmt = Math.max(R.shakeAmt, n); };
 FX.cinematic = function (x, y) {
   FX.slowmo = 0.9; R.letterT = 1.6;
-  const p = iso(x, y); R.cam.tx = p.x * 0.8; R.cam.ty = p.y * 0.8 + 48; R.cam.tz = R.baseZ * 1.18;
+  const p = iso(x, y); R.cam.tx = p.x * 0.6; R.cam.ty = p.y * 0.6 + 96; R.cam.tz = R.baseZ * 1.12;
   setTimeout(() => { R.cam.tz = R.baseZ; }, 1700);
 };
 

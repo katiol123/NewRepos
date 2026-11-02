@@ -24,16 +24,17 @@ function waitUntil(fn) { return new Promise(r => { const ch = () => fn() ? r() :
 
 AI.considerUlt = function (side) {
   const F = FACTIONS[side];
-  if (G.res[side] < F.ult.cost) return;
+  if (!ultReady(side)) return;
   const mine = alive(side), theirs = alive(foe(side));
   if (side === 'order') {
     const hurt = mine.reduce((s, u) => s + Math.min(3, u.maxHp - u.hp), 0);
     const dark = theirs.filter(e => !isLit(e.x, e.y)).length;
     const conceal = theirs.some(e => e.st.concealed);
-    if (hurt >= 6 || dark >= 3 || conceal || G.res[side] >= 9) useUlt(side);
+    if (hurt >= 7 || conceal || G.res[side] >= 9 || (dark >= 4 && G.round >= 3)) useUlt(side);
   } else {
     const lit = mine.filter(u => isLit(u.x, u.y)).length;
-    if (lit >= 2 || G.res[side] >= 9) useUlt(side);
+    const litFoes = theirs.filter(e => isLit(e.x, e.y)).length;
+    if ((lit >= 2 && G.round >= 2) || litFoes >= 3 || G.res[side] >= 9) useUlt(side);
   }
 };
 
@@ -45,6 +46,7 @@ AI.runUnit = async function (u, gid) {
   for (let i = 0; i < 7; i++) {
     if (G.gameId !== gid || G.winner || u.dead || u.ap <= 0) break;
     const plan = AI.best(u, moves < 2);
+    if (AI.trace) AI.trace.push(G.round + ' ' + u.side[0] + u.cls + ' ap' + u.ap + ' -> ' + (plan ? plan.kind + ' ' + (plan.id || '') + (plan.x !== undefined ? plan.x + ',' + plan.y : '') + ' s=' + plan.score.toFixed(1) : 'none'));
     if (!plan || plan.kind === 'end') break;
     if (plan.kind === 'move') {
       const r = reach(u); const p = pathFrom(r, plan.x, plan.y);
@@ -78,8 +80,14 @@ AI.pos = function (u, x, y) {
     if (e.st.watch > 0 && !u.st.concealed) s -= 1.6;
   }
   const lit = isLit(x, y);
+  // угроза ответного хода: сколько врагов достанут эту клетку
+  if (!(u.cls === 'shade' && !lit)) {
+    let seen = 0; for (const e of enemies) if (Math.hypot(e.x - x, e.y - y) <= 9 && hasLOS(e, P)) seen++;
+    const frag = u.hp <= 5 ? 1.6 : 1;
+    if (seen >= 2) s -= (seen - 1) * 1.1 * frag * (u.cls === 'shade' || u.cls === 'mystic' || u.cls === 'priest' ? 1.4 : 0.7);
+  }
   if (u.cls === 'shade') s += lit ? -1.5 : 1.8;
-  else if (u.side === 'coven') s += lit ? -0.3 : 1.0;
+  else if (u.side === 'coven') s += lit ? -0.2 : 0.5;
   else s += lit ? 1.0 : -0.4;
   // роли
   const W = { marksman: [8, 0.32], mystic: [6, 0.32], priest: [7, 0.25], bastion: [1.5, 0.45], shade: [1.5, 0.3] }[u.cls];
@@ -125,9 +133,11 @@ AI.bestAction = function (u, P, ap) {
         consider(v, id, e);
       }
     } else if (id === 'inferno') {
-      const enemies = alive(foe(u.side));
+      const enemies = alive(foe(u.side)).filter(e => !e.st.concealed);
       const cands = [];
       for (const e of enemies) for (const [dx, dy] of [[0, 0], ...DIRS8]) cands.push({ x: e.x + dx, y: e.y + dy });
+      // последняя известная клетка сокрытого врага
+      for (const e of alive(foe(u.side))) if (e.st.concealed && e.lastSeen) cands.push({ x: e.lastSeen.x, y: e.lastSeen.y, ghost: e });
       for (const c of cands) {
         if (!inb(c.x, c.y) || blocksLOS(c.x, c.y)) continue;
         if (Math.hypot(c.x - P.x, c.y - P.y) > A.range) continue;
@@ -137,12 +147,13 @@ AI.bestAction = function (u, P, ap) {
           const t = tile(p.x, p.y);
           const o = (p.x === u.x && p.y === u.y) ? null : unitAt(p.x, p.y);
           if (p.x === P.x && p.y === P.y) v -= 7;
-          if (o && o.side !== u.side) v += 3.4 + (o.hp <= 4 ? 4 : 0) + (o.st.concealed ? 0 : 0);
+          if (o && o.side !== u.side && !o.st.concealed) v += 3.4 + (o.hp <= 4 ? 4 : 0);
           if (o && o.side === u.side) v -= 5;
           if (t.obj && t.obj !== 'P' && t.ohp <= 3) {
             for (const e of enemies) if (Math.abs(e.x - p.x) + Math.abs(e.y - p.y) === 1) v += 1.2;
           }
         }
+        if (c.ghost && Math.hypot(c.ghost.lastSeen.x - c.x, c.ghost.lastSeen.y - c.y) < 0.1) v += 2.6;
         v -= 3.5;
         if (v > 0) consider(v, id, c);
       }
@@ -165,21 +176,23 @@ AI.bestAction = function (u, P, ap) {
       if (alive(foe(u.side)).some(e => dist(e, P) < 10)) v += 0.8;
       consider(v, id, null);
     } else if (id === 'taunt') {
-      const ts = alive(foe(u.side)).filter(e => dist(P, e) <= 5 && hasLOS(P, e));
-      if (ts.length && u.hp > u.maxHp * 0.5) consider(ts.length * 1.3, id, null);
+      if (u.tauntUsed) continue;
+      const ts = alive(foe(u.side)).filter(e => !e.st.concealed && dist(P, e) <= 4 && hasLOS(P, e));
+      if (ts.length && u.hp > u.maxHp * 0.5) consider(ts.length * 1.0 - 0.8, id, null);
     } else if (id === 'watch') {
       if (u.st.watch) continue;
       const vis = alive(foe(u.side)).filter(e => !e.st.concealed && dist(P, e) <= 11 && hasLOS(P, e)).length;
       consider(vis ? 1.4 : 2.3 + (ap >= 3 ? 0.8 : 0), id, null);
     } else if (id === 'vanish') {
       if (u.st.concealed || isLit(P.x, P.y)) continue;
+      if (alive(foe(u.side)).some(e => Math.max(Math.abs(e.x - P.x), Math.abs(e.y - P.y)) <= 2)) continue;
       consider(2.2, id, null);
     } else if (id === 'brazier') {
       const b = adjBrazier(virt, P); if (!b) continue;
       let near = 0; for (const e of alive(foe(u.side))) if (Math.hypot(e.x - b.x, e.y - b.y) < 4) near++;
       let mine = 0; for (const a of alive(u.side)) if (Math.hypot(a.x - b.x, a.y - b.y) < 4) mine++;
       const wantDark = u.side === 'coven';
-      const v = b.lit === wantDark ? 0.8 + (wantDark ? near * 0.4 + mine * 0.6 : mine * 0.6 + near * 0.6) : -5;
+      const v = b.lit === wantDark ? -0.6 + (wantDark ? near * 0.5 + mine * 0.5 : mine * 0.6 + near * 0.4) : -5;
       consider(v, id, b);
     }
   }
@@ -193,7 +206,7 @@ AI.best = function (u, canMove) {
   // Действие с места
   const a0 = AI.bestAction(u, cur, u.ap);
   if (a0 && a0.val > 0.2) opts.push({ kind: 'ab', id: a0.id, target: a0.target, score: curPos + a0.val });
-  opts.push({ kind: 'end', score: curPos + u.ap * 0.25 });
+  opts.push({ kind: 'end', score: curPos + Math.min(u.ap, 3) * 0.7 });
   // Кровавая цена — если без неё нельзя добить
   if (u.ap === 1 && !u.bloodUsed && u.hp > 6) {
     const a2 = AI.bestAction(u, cur, 2);
@@ -208,13 +221,13 @@ AI.best = function (u, canMove) {
       const P = { x, y };
       const ps = AI.pos(u, x, y);
       const act = left > 0 ? AI.bestAction(u, P, left) : null;
-      const sc = ps + (act && act.val > 0.2 ? act.val * 0.92 : left * 0.25) - apc * 0.15 + Math.random() * 0.15;
+      const sc = ps + (act && act.val > 0.2 ? act.val * 0.92 : left * 0.7) - apc * 0.15 + Math.random() * 0.15;
       opts.push({ kind: 'move', x, y, score: sc });
     }
   }
   opts.sort((a, b) => b.score - a.score);
   const b = opts[0];
-  if (b.kind === 'move' && b.score < curPos + (a0 && a0.val > 0.2 ? a0.val : u.ap * 0.25) + 0.3) {
+  if (b.kind === 'move' && b.score < curPos + (a0 && a0.val > 0.2 ? a0.val : u.ap * 0.7) + 0.3) {
     // не дёргаться без выгоды
     const alt = opts.find(o => o.kind !== 'move'); return alt;
   }

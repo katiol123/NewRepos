@@ -46,7 +46,7 @@ R.fitZoom = function () {
 };
 R.focus = function (x, y) {
   const p = iso(x, y);
-  R.cam.tx = p.x * 0.6; R.cam.ty = p.y * 0.6 + 240 * 0.4;
+  R.cam.tx = p.x * 0.35; R.cam.ty = p.y * 0.35 + 240 * 0.65;
 };
 R.toWorld = function (sx, sy) {
   return { x: (sx - R.W / 2) / R.cam.z + R.cam.x, y: (sy - R.H / 2) / R.cam.z + R.cam.y };
@@ -719,7 +719,7 @@ R.frame = function (dt) {
   if (!R.low) R.drawFog(c, time);
   // ульт-тонировка
   if (G.dawn > 0) { c.fillStyle = 'rgba(255,200,120,0.06)'; c.fillRect(0, 0, R.W, R.H); }
-  if (G.eclipse > 0) { c.fillStyle = 'rgba(60,20,100,0.12)'; c.fillRect(0, 0, R.W, R.H); }
+  if (G.eclipse > 0) { c.fillStyle = 'rgba(60,20,100,0.05)'; c.fillRect(0, 0, R.W, R.H); }
   // кинематографичные полосы
   R.letter += ((R.letterT > 0 ? 1 : 0) - R.letter) * Math.min(1, dt * 6);
   if (R.letterT > 0) R.letterT -= dt;
@@ -740,7 +740,7 @@ R.buildBg = function () {
 };
 R.drawSky = function (c, time) {
   // луна
-  const mx = R.W * 0.8, my = R.H * 0.16;
+  const mx = R.W * 0.7, my = R.H * 0.2;
   c.save(); c.globalCompositeOperation = 'lighter';
   const mg = c.createRadialGradient(mx, my, 0, mx, my, 220);
   const ecl = G.eclipse > 0;
@@ -766,7 +766,7 @@ R.drawLighting = function (c, time, ox, oy, z) {
   lx.setTransform(1, 0, 0, 1, 0, 0);
   lx.globalCompositeOperation = 'source-over';
   lx.clearRect(0, 0, lc.width, lc.height);
-  let dark = 0.62; if (G.dawn > 0) dark = 0.12; if (G.eclipse > 0) dark = 0.78;
+  let dark = 0.62; if (G.dawn > 0) dark = 0.12; if (G.eclipse > 0) dark = 0.72;
   if (G.scene === 'menu') dark = 0.55;
   // темнота только на платформе
   lx.setTransform(sc * z, 0, 0, sc * z, sc * ox, sc * oy);
@@ -882,7 +882,7 @@ R.drawUnitWorld = function (c, u, time) {
   let tint = null, ta = 0;
   if (dying > 0) { tint = '#3a2a1a'; ta = Math.min(0.85, dying); c.translate(0, dying * 4); }
   else if (u.anim.flash > 0) { tint = '#ffffff'; ta = 0.75; }
-  else if (G.light && !u.dead) { const l = clamp(lightAt(u.x, u.y), 0, 1.2); const b = 0.55 + l * 0.45; if (b < 0.97) { tint = '#06030c'; ta = (1 - b) * 0.9; } }
+  else if (G.light && !u.dead) { const l = clamp(lightAt(u.x, u.y), 0, 1.2); const b = 0.55 + l * 0.45; if (b < 0.97) { tint = '#06030c'; ta = Math.min(0.32, (1 - b) * 0.75); } }
   c.globalAlpha = alpha;
   if (!tint) R.drawUnit(c, u, time);
   else {
@@ -961,7 +961,7 @@ function outlineSet(c, set, color, width) {
   }
   c.stroke();
 }
-const AP_COL = ['#7fe0ff', '#7fe0ff', '#f2c75c', '#ff6a5c', '#ff6a5c'];
+const AP_COL = ['#7fe0ff', '#7fe0ff', '#f2c75c', '#c98a6a', '#c98a6a'];
 R.drawHighlights = function (c, time) {
   if (G.scene !== 'battle' || G.winner) return;
   const u = G.sel;
@@ -983,8 +983,8 @@ R.drawHighlights = function (c, time) {
   for (let a = 3; a >= 1; a--) {
     const set = new Set(); for (let b = 1; b <= a; b++) for (const k of bands[b]) set.add(k);
     for (const k of bands[a]) { const p = iso(k % MW, (k / MW) | 0); diamond(c, p.x, p.y, 0.94); c.fillStyle = rgba(AP_COL[a], a === 1 ? 0.10 : 0.07); c.fill(); }
-    outlineSet(c, set, rgba(AP_COL[a], 0.25), 4);
-    outlineSet(c, set, rgba(AP_COL[a], 0.85), 1.5);
+    if (a === 3) { c.setLineDash([5, 5]); outlineSet(c, set, rgba(AP_COL[a], 0.5), 1.2); c.setLineDash([]); }
+    else { outlineSet(c, set, rgba(AP_COL[a], 0.25), 4); outlineSet(c, set, rgba(AP_COL[a], 0.85), 1.5); }
   }
   c.restore();
   // путь

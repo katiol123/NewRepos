@@ -69,8 +69,10 @@ function newGame(mode) {
   Timers.length = 0;
   FX.clear();
   buildMap(); spawnUnits();
-  G.round = 1; G.side = 'order'; G.res = { order: 3, coven: 3 }; G.altar = { order: 0, coven: 0 };
-  G.dawn = 0; G.eclipse = 0; G.busy = false; G.winner = null; G.winReason = ''; G.sel = null; G.mode = null; G.turnCount = 0;
+  G.round = 1; G.side = 'order'; G.res = { order: 2, coven: 4 }; G.altar = { order: 0, coven: 0 };
+  G.dawn = 0; G.eclipse = 0; G.ultRound = { order: -9, coven: -9 };
+  G.first = G.forceFirst || (Math.random() < 0.5 ? 'order' : 'coven');
+  G.side = G.first; G.res = { order: 3, coven: 3 }; G.res[foe(G.first)] = 4; G.res[G.first] = 2; G.busy = false; G.winner = null; G.winReason = ''; G.sel = null; G.mode = null; G.turnCount = 0;
   G.stats = { order: { dmg: 0, kills: 0, shots: 0, hits: 0 }, coven: { dmg: 0, kills: 0, shots: 0, hits: 0 } };
   G.spectator = mode === 'spectator';
   G.control = { order: mode === 'order' ? 'human' : 'ai', coven: mode === 'coven' ? 'human' : 'ai' };
@@ -136,7 +138,7 @@ function reach(u, apBudget) {
       const nx = cx + dx, ny = cy + dy;
       if (!walkable(nx, ny)) continue;
       if (dx && dy && (!walkable(cx + dx, cy) || !walkable(cx, cy + dy))) continue;
-      const o = unitAt(nx, ny); if (o && o !== u) continue;
+      const o = unitAt(nx, ny); if (o && o !== u && !(o.side !== u.side && o.st.concealed)) continue;
       let nc = cost[k] + c;
       const tt = G.map[ny][nx];
       if (tt.burn > 0) nc += 0.01; // лёгкое предпочтение обходить огонь
@@ -167,7 +169,8 @@ function losLine(ax, ay, bx, by) {
   }
   return true;
 }
-function hasLOS(a, b) {
+function hasLOS(a, b) { return los1(a, b) || los1(b, a); }
+function los1(a, b) {
   if (losLine(a.x, a.y, b.x, b.y)) return true;
   // выглядывание из-за полного укрытия
   for (const [dx, dy] of DIRS4) {
@@ -235,7 +238,7 @@ function calcAttack(att, tgt, id, opt = {}) {
   if (att.side === 'order' && isLit(from.x, from.y)) br.push(['Свет веры', 10]);
   if (att.st.blessed > 0) br.push(['Благословение', 15]);
   if (att.st.cursed > 0) br.push(['Проклятие', -15]);
-  if (att.st.taunt && att.st.taunt !== tgt.id) br.push(['Вызов', -25]);
+  if (att.st.taunt && att.st.taunt !== tgt.id) br.push(['Вызов', -15]);
   if (att.st.concealed && id === 'backstab') br.push(['Из сокрытия', 20]);
   if (G.eclipse > 0 && att.side === 'order') br.push(['Ужас затмения', -10]);
   if (opt.reaction) br.push(['Ответный выстрел', -10]);
@@ -244,7 +247,7 @@ function calcAttack(att, tgt, id, opt = {}) {
   hit = clamp(Math.round(hit), 5, 95);
   let crit = att.crit + (A.crit || 0);
   const exposed = !A.melee ? cover === 0 : coverFor(tpos, tgt.side, from).cover === 0;
-  if (exposed) crit += A.flankCrit || (A.melee ? 10 : 25);
+  if (exposed) crit += A.flankCrit || (A.melee ? 10 : 20);
   crit = clamp(crit, 0, 100);
   return { hit, crit, br, cover, ctile, exposed, dist: d };
 }
@@ -253,9 +256,13 @@ function avgDmg(id) { const A = ABIL[id]; return (A.dmg[0] + A.dmg[1]) / 2; }
 // ---------------- Способности: проверка и цели ----------------
 function abilitiesOf(u) {
   const l = CLASSES[u.cls].abil.slice();
-  l.push('blood');
-  if (adjBrazier(u)) l.push('brazier');
+  l.push('blood', 'brazier');
   return l;
+}
+function meleeOk(a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  if (dx && dy) return walkable(a.x + dx, a.y) || walkable(a.x, a.y + dy);
+  return true;
 }
 function adjBrazier(u, pos) {
   pos = pos || u;
@@ -269,8 +276,10 @@ function canUse(u, id) {
   if (u.ap < A.ap || (A.apAll && u.ap < 1)) return { ok: false, why: 'Мало ОД' };
   if (A.res && G.res[u.side] < A.res) return { ok: false, why: 'Мало ресурса: ' + FACTIONS[u.side].res };
   if (id === 'blood') { if (u.bloodUsed) return { ok: false, why: 'Уже в этом ходу' }; if (u.hp <= 3) return { ok: false, why: 'Слишком мало ОЗ' }; if (u.ap >= MAX_AP + 1) return { ok: false, why: 'ОД на пределе' }; }
-  if (id === 'vanish') { if (u.st.concealed) return { ok: false, why: 'Уже сокрыт' }; if (isLit(u.x, u.y)) return { ok: false, why: 'Нужна тьма' }; }
+  if (id === 'vanish') { if (u.st.concealed) return { ok: false, why: 'Уже сокрыт' }; if (isLit(u.x, u.y)) return { ok: false, why: 'Нужна тьма' }; if (alive(foe(u.side)).some(e => Math.max(Math.abs(e.x - u.x), Math.abs(e.y - u.y)) <= 2)) return { ok: false, why: 'Враг слишком близко (≤2 клеток)' }; }
   if (id === 'bulwark' && u.st.bulwark) return { ok: false, why: 'Уже активно' };
+  if (id === 'brazier' && !adjBrazier(u)) return { ok: false, why: 'Нужна соседняя жаровня' };
+  if (id === 'taunt' && u.tauntUsed) return { ok: false, why: 'Уже в этом ходу' };
   if (id === 'watch' && u.st.watch) return { ok: false, why: 'Уже активно' };
   if (id === 'taunt' && !targetsFor(u, id).length) return { ok: false, why: 'Нет врагов рядом' };
   const ty = abType(id, u.side);
@@ -281,13 +290,13 @@ function targetsFor(u, id, from) {
   from = from || u;
   const A = ABIL[id]; const ty = abType(id, u.side);
   if (ty === 'attack' || ty === 'enemy') {
-    return alive(foe(u.side)).filter(e => !e.st.concealed && dist(from, e) <= A.range + 0.01 && (A.melee || hasLOS(from, e)));
+    return alive(foe(u.side)).filter(e => !e.st.concealed && dist(from, e) <= A.range + 0.01 && (A.melee ? meleeOk(from, e) : hasLOS(from, e)));
   }
   if (ty === 'ally') {
     return alive(u.side).filter(a => dist(from, a) <= A.range + 0.01 && (a === u || hasLOS(from, a)) &&
       (id !== 'heal' || a.hp < a.maxHp || tile(a.x, a.y).burn > 0) && (id !== 'hex' || a.st.blessed <= 0));
   }
-  if (id === 'taunt') return alive(foe(u.side)).filter(e => dist(from, e) <= 5.01 && hasLOS(from, e));
+  if (id === 'taunt') return alive(foe(u.side)).filter(e => !e.st.concealed && dist(from, e) <= 4.01 && hasLOS(from, e));
   if (ty === 'brazier') { const b = adjBrazier(u, from); return b ? [b] : []; }
   return [];
 }
@@ -331,6 +340,8 @@ async function moveUnit(u, path) {
   for (const s of path) {
     if (u.dead || G.winner) break;
     faceTo(u, s.x, s.y);
+    const amb = unitAt(s.x, s.y);
+    if (amb && amb !== u) { reveal(amb, 'на него наткнулись'); FX.float(u.x, u.y, 'ЗАСАДА!', '#ff9b6b', 1); break; }
     const fx = u.x, fy = u.y;
     await tween(0.17, f => { u.rx = fx + (s.x - fx) * f; u.ry = fy + (s.y - fy) * f; });
     u.x = s.x; u.y = s.y; u.rx = s.x; u.ry = s.y;
@@ -394,14 +405,14 @@ async function doAttack(att, tgt, id, opt = {}) {
 
   if (outcome === 'miss') {
     FX.float(tgt.x, tgt.y, 'ПРОМАХ', '#9aa0b5', 0.9);
-    log(`${uName(att)} → ${uName(tgt)}: <i>промах</i> (${calc.hit}%).`, att.side);
+    log(`${uName(att)} → ${uName(tgt)}: <i>промах</i>&nbsp;<span class="nw">(${calc.hit}%)</span>.`, att.side);
     if (calc.ctile) await damageObject(calc.ctile.x, calc.ctile.y, irnd(1, 2));
   } else {
     G.stats[att.side].hits++;
     if (outcome === 'crit') { FX.float(tgt.x, tgt.y, 'КРИТ!', '#ff5a3c', 1.3); FX.shake(9); }
     if (outcome === 'graze') FX.float(tgt.x, tgt.y, 'ЗАДЕЛ', '#d9c49a', 0.85);
     const word = outcome === 'crit' ? '<b class="crit">крит</b>' : outcome === 'graze' ? 'задевает' : 'попадание';
-    log(`${uName(att)} → ${uName(tgt)}: ${word}, −${dmg} (${calc.hit}%).`, att.side);
+    log(`${uName(att)} → ${uName(tgt)}: ${word}, <span class="nw">−${dmg} (${calc.hit}%)</span>.`, att.side);
     gainRes(att.side, 1);
     await damageUnit(tgt, dmg, att, outcome);
   }
@@ -415,7 +426,7 @@ async function damageUnit(u, dmg, src, kind) {
   if (u.dead || dmg <= 0) return;
   u.hp -= dmg; u.anim.flash = 0.3; u.anim.hurt = 1;
   if (src) G.stats[src.side].dmg += dmg;
-  FX.float(u.x, u.y, '−' + dmg, kind === 'crit' ? '#ff3b2f' : kind === 'fire' ? '#ff9d3a' : '#ff6b5e', kind === 'crit' ? 1.6 : 1.15, 14);
+  FX.float(u.x, u.y, '−' + dmg, kind === 'crit' ? '#ff3b2f' : kind === 'fire' ? '#ff9d3a' : '#ff6b5e', kind === 'crit' ? 2.0 : 1.5, 0);
   FX.blood(u.x, u.y, u.side, dmg);
   if (kind !== 'fire') FX.shake(3 + dmg * 0.6);
   SFX.play('hit');
@@ -460,7 +471,7 @@ async function useAbility(u, id, target) {
   if (G.busy || G.winner) return;
   const chk = canUse(u, id); if (!chk.ok) return;
   const A = ABIL[id];
-  G.busy = true; G.mode = null;
+  G.busy = true; G.mode = null; UI.tip(null);
   const apCost = A.apAll ? u.ap : A.ap;
   u.ap -= apCost;
   if (A.res) gainRes(u.side, -A.res);
@@ -475,6 +486,7 @@ async function useAbility(u, id, target) {
       case 'taunt': {
         const ts = targetsFor(u, 'taunt');
         FX.burst('taunt', u.x, u.y, u.side); SFX.play('horn');
+        u.tauntUsed = true;
         for (const e of ts) { e.st.taunt = u.id; FX.float(e.x, e.y, 'ВЫЗОВ', '#ff9b6b', 0.9); }
         log(`${uName(u)} бросает Вызов (${ts.length} враг.).`, u.side); await wait(500); break;
       }
@@ -485,7 +497,7 @@ async function useAbility(u, id, target) {
         log(`${uName(u)} держит Бдение (${u.st.watch} выстр.).`, u.side); await wait(350); break;
       case 'inferno': await castInferno(u, target); break;
       case 'vanish':
-        u.st.concealed = true; FX.burst('vanish', u.x, u.y, u.side); SFX.play('vanish');
+        u.st.concealed = true; u.lastSeen = { x: u.x, y: u.y }; FX.burst('vanish', u.x, u.y, u.side); SFX.play('vanish');
         log(`${uName(u)} растворяется во тьме.`, u.side); await wait(400); break;
       case 'heal': {
         u.anim.cast = 1; faceTo(u, target.x, target.y);
@@ -544,21 +556,25 @@ async function castInferno(u, c) {
   await wait(300);
 }
 
+const ULT_CD = 4;
+function ultReady(side) { return G.res[side] >= FACTIONS[side].ult.cost && G.round - G.ultRound[side] >= ULT_CD; }
 async function useUlt(side) {
   if (G.busy || G.winner || G.side !== side) return;
-  const F = FACTIONS[side]; if (G.res[side] < F.ult.cost) return;
-  G.busy = true; gainRes(side, -F.ult.cost);
+  const F = FACTIONS[side]; if (!ultReady(side)) return;
+  G.ultRound[side] = G.round;
+  G.busy = true; UI.tip(null); gainRes(side, -F.ult.cost);
   try {
     UI.ultFlash(side);
     if (side === 'order') {
-      G.dawn = 3; FX.dawn(); SFX.play('dawn');
+      G.dawn = 2; FX.dawn(); SFX.play('dawn');
       refreshLight();
       for (const e of alive('coven')) if (e.st.concealed) reveal(e, 'Рассвет');
-      for (const a of alive('order')) { const h = Math.min(3, a.maxHp - a.hp); if (h > 0) { a.hp += h; FX.float(a.x, a.y, '+' + h, '#7dff9e', 1); } }
+      for (const a of alive('order')) { const h = Math.min(2, a.maxHp - a.hp); if (h > 0) { a.hp += h; FX.float(a.x, a.y, '+' + h, '#7dff9e', 1); } }
       log(`<b class="c-order">Рассвет!</b> Свет заливает руины.`, side);
     } else {
-      G.eclipse = 3; FX.eclipse(); SFX.play('eclipse');
+      G.eclipse = 2; FX.eclipse(); SFX.play('eclipse');
       refreshLight();
+      for (const a of alive('coven')) { const h = Math.min(2, a.maxHp - a.hp); if (h > 0) { a.hp += h; FX.float(a.x, a.y, '+' + h, '#7dff9e', 1); } }
       log(`<b class="c-coven">Затмение!</b> Огни гаснут, Орден охвачен ужасом.`, side);
     }
     await wait(1200);
@@ -577,10 +593,9 @@ async function startTurn(side) {
   R.groundDirty = true;
   refreshLight();
   for (const u of alive(side)) {
-    u.ap = MAX_AP; u.bloodUsed = false; u.guard = 0; u.st.bulwark = false; u.st.watch = 0;
-    if (u.st.blessed > 0) u.st.blessed--;
-    if (u.st.cursed > 0) u.st.cursed--;
+    u.ap = MAX_AP; u.bloodUsed = false; u.tauntUsed = false; u.guard = 0; u.st.bulwark = false; u.st.watch = 0;
   }
+  for (const u of alive()) { if (side === 'order' && u.st.blessed > 0) u.st.blessed--; if (side === 'coven' && u.st.cursed > 0) u.st.cursed--; }
   // алтарь
   const mine = alive(side).some(u => inAltar(u.x, u.y));
   const theirs = alive(foe(side)).some(u => inAltar(u.x, u.y));
@@ -612,12 +627,12 @@ async function startTurn(side) {
 
 function endTurn() {
   if (G.winner) return;
-  for (const u of alive(G.side)) { u.guard = u.ap * GUARD_PER_AP; if (u.guard) FX.float(u.x, u.y, 'Стойкость +' + u.guard, '#9fc4ff', 0.75); u.ap = 0; }
+  for (const u of alive(G.side)) { u.guard = Math.min(u.ap, MAX_AP) * GUARD_PER_AP; if (u.guard) FX.float(u.x, u.y, 'Стойкость +' + u.guard, '#9fc4ff', 0.75); u.ap = 0; }
   // Вызов действует один ход врага
   for (const u of alive(G.side)) u.st.taunt = null;
   G.sel = null; G.mode = null;
   const next = foe(G.side);
-  if (next === 'order') G.round++;
+  if (next === G.first) G.round++;
   if (G.round > MAX_ROUNDS) { roundLimit(); return; }
   UI.refresh();
   startTurn(next);

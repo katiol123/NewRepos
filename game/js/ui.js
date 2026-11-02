@@ -55,6 +55,7 @@ UI.veil = function (mid) {
 UI.startGame = function (mode) {
   UI.lastMode = mode;
   $('#endscreen').classList.add('hidden');
+  document.body.classList.remove('ended');
   UI.veil(() => {
     newGame(mode);
     G.scene = 'battle';
@@ -62,15 +63,17 @@ UI.startGame = function (mode) {
     $('#menu').classList.add('hidden');
     $('#hud').classList.remove('hidden');
     $('#specBar').classList.toggle('hidden', !G.spectator);
+    document.body.classList.toggle('spectating', G.spectator);
     G.speed = G.spectator ? 1 : 1;
     document.querySelectorAll('#specBar button').forEach(x => x.classList.toggle('on', x.dataset.speed === '1'));
     R.cam.tz = R.baseZ; R.cam.tx = 0; R.cam.ty = 240;
     UI.buildRoster(); UI.refresh(); UI.log();
-  }).then(() => startTurn('order'));
+  }).then(() => startTurn(G.first));
 };
 UI.toMenu = function () {
   UI.veil(() => {
     G.gameId++; Timers.length = 0; FX.clear();
+    document.body.classList.remove('ended');
     G.scene = 'menu'; G.winner = null; G.sel = null; G.mode = null;
     buildMap(); spawnUnits(); refreshLight(); R.groundDirty = true;
     document.body.classList.remove('in-battle');
@@ -147,7 +150,7 @@ UI.refresh = function () {
     el.classList.toggle('active', G.side === s);
   }
   $('#roundNum').textContent = `Раунд ${G.round}/${MAX_ROUNDS}`;
-  $('#turnLabel').textContent = `Ход: ${FACTIONS[G.side].short}`;
+  $('#turnLabel').textContent = G.winner ? 'Битва окончена' : `Ход: ${FACTIONS[G.side].short}`;
   $('#turnLabel').className = 'c-' + G.side;
   let fx = '';
   if (G.dawn > 0) fx += `<span class="eff e-dawn">Рассвет · ${G.dawn}</span>`;
@@ -167,9 +170,9 @@ UI.refresh = function () {
   const ub = $('#ultBtn');
   if (s) {
     const F = FACTIONS[s];
-    ub.innerHTML = `${svgIcon(s === 'order' ? 'sun' : 'moon', 26)}<span><b>${F.ult.name}</b><small>${F.ult.cost} ${F.res.toLowerCase()}</small></span>`;
-    ub.className = 'u-' + s + (human && G.res[s] >= F.ult.cost && G.side === s ? ' ready' : '');
-    ub.disabled = !(human && G.res[s] >= F.ult.cost && G.side === s);
+    ub.innerHTML = `${svgIcon(s === 'order' ? 'sun' : 'moon', 26)}<span><b>${F.ult.name}</b><small>${F.res}: ${Math.min(G.res[s], F.ult.cost)}/${F.ult.cost}${ultReady(s) ? ' — готово (U)' : G.res[s] >= F.ult.cost ? ' — перезарядка ' + (ULT_CD - (G.round - G.ultRound[s])) + ' р.' : ''}</small></span>`;
+    ub.className = 'u-' + s + (human && ultReady(s) && G.side === s ? ' ready' : '');
+    ub.disabled = !(human && ultReady(s) && G.side === s);
     ub.dataset.tip = `<b>${F.ult.name}</b> — ${F.ult.cost} ${F.res}<br>${F.ult.desc}`;
     ub.style.display = '';
   } else ub.style.display = 'none';
@@ -202,6 +205,7 @@ UI.unitPanel = function () {
   st.push(isLit(u.x, u.y) ? '<b class="s-gold">на свету</b>' : '<b class="s-vio">во тьме</b>');
   $('#uStatus').innerHTML = st.join(' · ');
   const human = UI.humanTurn() && u.side === G.side;
+  if (G.spectator) { $('#abilities').innerHTML = ''; return; }
   const list = abilitiesOf(u);
   const ab = $('#abilities'); ab.innerHTML = '';
   list.forEach((id, i) => {
@@ -313,7 +317,7 @@ UI.onDown = function (e) {
     }
     if (u && R.targetCache(s, G.mode).includes(u)) { useAbility(s, G.mode, u); return; }
     if (u && u.side === G.side) { selectUnit(u); return; }
-    G.mode = null; UI.refresh(); return;
+    G.mode = null; UI.tip(null); UI.refresh(); return;
   }
   if (u && u.side === G.side) { selectUnit(u); return; }
   if (s && u && u.side !== s.side) {
@@ -336,6 +340,9 @@ UI.onDown = function (e) {
 
 UI.onKey = function (e) {
   if (e.key === 'Escape') {
+    if (!$('#confirm').classList.contains('hidden')) { $('#confirm').classList.add('hidden'); return; }
+    if (!$('#pause').classList.contains('hidden') && $('#codex').classList.contains('hidden')) { UI.pause(false); return; }
+    if (G.winner) return;
     if (!$('#codex').classList.contains('hidden')) { UI.codex(false); return; }
     if (G.mode) { G.mode = null; UI.refresh(); return; }
     if (G.scene === 'battle') UI.pause($('#pause').classList.contains('hidden'));
@@ -356,7 +363,7 @@ UI.onKey = function (e) {
     const withAp = list.filter(u => u.ap > 0); const pool = withAp.length ? withAp : list;
     const i = pool.indexOf(G.sel); selectUnit(pool[(i + 1) % pool.length]);
   }
-  if (e.key === 'Enter' || k === 'e' || k === 'у') UI.tryEndTurn();
+  if (e.key === 'Enter') UI.tryEndTurn();
   if (k === 'u' || k === 'г') useUlt(G.side);
 };
 
@@ -372,6 +379,8 @@ UI.doEndTurn = function () { if (!UI.humanTurn()) return; SFX.play('click'); end
 
 // ---------------- Конец игры ----------------
 UI.showEnd = function () {
+  ['#pause', '#confirm', '#codex'].forEach(s => $(s).classList.add('hidden'));
+  UI.tip(null); document.body.classList.add('ended');
   const w = G.winner; const el = $('#endscreen');
   let title, cls;
   if (w === 'draw') { title = 'Ничья'; cls = 'draw'; }
