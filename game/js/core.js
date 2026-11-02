@@ -570,7 +570,9 @@ async function castInferno(u, c) {
 }
 
 const ULT_CD = 4;
-function ultReady(side) { return G.res[side] >= FACTIONS[side].ult.cost && G.round - G.ultRound[side] >= ULT_CD; }
+// Ульта врага, пока действует, не может быть перебита своей (в обе стороны)
+function enemyUltActive(side) { return side === 'order' ? G.eclipse > 0 : G.dawn > 0; }
+function ultReady(side) { return G.res[side] >= FACTIONS[side].ult.cost && G.round - G.ultRound[side] >= ULT_CD && !enemyUltActive(side); }
 async function useUlt(side) {
   if (G.busy || G.winner || G.side !== side) return;
   const F = FACTIONS[side]; if (!ultReady(side)) return;

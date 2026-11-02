@@ -262,6 +262,25 @@ const TESTS = [
     if (c.hp !== c.maxHp - 3) return 'лечение не 2';
     return null;
   }],
+  ['Ульты не перебивают друг друга (в обе стороны)', async () => {
+    T.setup({ units: [['order', 'bastion', 2, 2], ['coven', 'bastion', 10, 10]], objs: [['B', 5, 5]] });
+    const G = GAME.G;
+    G.res.order = 10; G.res.coven = 10;
+    await useUlt('order');
+    G.side = 'coven';
+    if (ultReady('coven')) return 'Затмение доступно во время Рассвета';
+    await useUlt('coven');
+    if (G.eclipse > 0) return 'Затмение наложилось поверх Рассвета';
+    if (!isLit(15, 15)) return 'Рассвет погас в ход врага';
+    G.dawn = 0; G.side = 'coven'; G.ultRound.coven = -9; refreshLight();
+    await useUlt('coven');
+    G.side = 'order'; G.ultRound.order = -9;
+    if (ultReady('order')) return 'Рассвет доступен во время Затмения';
+    await useUlt('order');
+    if (G.dawn > 0) return 'Рассвет перебил Затмение';
+    if (isLit(5, 6)) return 'жаровня светит во время Затмения';
+    return null;
+  }],
   ['Алтарь: очко со 2-го раунда, враг рядом блокирует, 4 очка — победа', async () => {
     const [o, c] = T.setup({ round: 2, units: [['order', 'bastion', 7, 7], ['coven', 'bastion', 2, 2]] });
     await startTurn('order');

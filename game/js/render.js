@@ -770,7 +770,7 @@ R.drawLighting = function (c, time, ox, oy, z) {
   lx.setTransform(1, 0, 0, 1, 0, 0);
   lx.globalCompositeOperation = 'source-over';
   lx.clearRect(0, 0, lc.width, lc.height);
-  let dark = 0.62; if (G.dawn > 0) dark = 0.12; if (G.eclipse > 0) dark = 0.72;
+  let dark = 0.62; if (G.eclipse > 0) dark = 0.72; if (G.dawn > 0) dark = 0.12;
   if (G.scene === 'menu') dark = 0.55;
   // темнота только на платформе
   lx.setTransform(sc * z, 0, 0, sc * z, sc * ox, sc * oy);

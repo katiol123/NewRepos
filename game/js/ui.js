@@ -170,7 +170,7 @@ UI.refresh = function () {
   const ub = $('#ultBtn');
   if (s) {
     const F = FACTIONS[s];
-    ub.innerHTML = `${svgIcon(s === 'order' ? 'sun' : 'moon', 26)}<span><b>${F.ult.name}</b><small>${F.res}: ${Math.min(G.res[s], F.ult.cost)}/${F.ult.cost}${ultReady(s) ? ' — готово (U)' : G.res[s] >= F.ult.cost ? ' — перезарядка ' + (ULT_CD - (G.round - G.ultRound[s])) + ' р.' : ''}</small></span>`;
+    ub.innerHTML = `${svgIcon(s === 'order' ? 'sun' : 'moon', 26)}<span><b>${F.ult.name}</b><small>${F.res}: ${Math.min(G.res[s], F.ult.cost)}/${F.ult.cost}${ultReady(s) ? ' — готово (U)' : enemyUltActive(s) ? ' — подавлено: ' + FACTIONS[foe(s)].ult.name + ' врага' : G.res[s] >= F.ult.cost ? ' — перезарядка ' + (ULT_CD - (G.round - G.ultRound[s])) + ' р.' : ''}</small></span>`;
     ub.className = 'u-' + s + (human && ultReady(s) && G.side === s ? ' ready' : '');
     ub.disabled = !(human && ultReady(s) && G.side === s);
     ub.dataset.tip = `<b>${F.ult.name}</b> — ${F.ult.cost} ${F.res}<br>${F.ult.desc}`;
