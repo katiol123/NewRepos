@@ -112,7 +112,7 @@ const ABIL = {
   smite: { name: { order: 'Кара', coven: 'Порча' }, ap: 2, type: 'attack', range: 7, dmg: [2, 4], aim: 5, magic: true,
     icon: 'smite', proj: 'beam', desc: 'Священный (или нечестивый) луч.' },
   heal: { name: { order: 'Исцеление', coven: 'Сращивание костей' }, ap: 2, res: 2, type: 'ally', range: 5, heal: 5,
-    icon: 'heal', desc: 'Восстанавливает союзнику 5 ОЗ и гасит на нём огонь.' },
+    icon: 'heal', desc: 'Восстанавливает союзнику 5 ОЗ и гасит на нём огонь. Молитве не нужна прямая видимость — только дальность 5.' },
   hex: { name: { order: 'Благословение', coven: 'Проклятие' }, ap: 1, res: 2, type: { order: 'ally', coven: 'enemy' }, range: 7,
     icon: 'star', desc: { order: 'Союзник: +15 к меткости и защите на 2 хода.', coven: 'Враг: −15 к меткости и защите на 2 хода.' } },
   blood: { name: 'Кровавая цена', ap: 0, type: 'self', icon: 'blood', desc: 'Раз за ход: пожертвовать 3 ОЗ ради +1 ОД.' },

@@ -306,7 +306,7 @@ UI.whyNot = function (s, id, t) {
   const d = dist(s, t);
   if (d > A.range + 0.01) return `Слишком далеко: ${d.toFixed(1)} кл. при дальности ${A.range}`;
   if (A.melee && !meleeOk(s, t)) return 'Угол стены мешает удару';
-  if (!A.melee && t !== s && !hasLOS(s, t)) return 'Нет прямой видимости — мешает стена или колонна';
+  if (!wantAlly && !A.melee && t !== s && !hasLOS(s, t)) return 'Нет прямой видимости — мешает стена или колонна';
   if (id === 'heal' && t.hp >= t.maxHp && tile(t.x, t.y).burn <= 0) return 'Цель полностью здорова';
   if (id === 'hex' && s.side === 'order' && t.st.blessed > 0) return 'Уже благословлён';
   return 'Недопустимая цель';

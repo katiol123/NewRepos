@@ -285,7 +285,7 @@ function canUse(u, id) {
   if (id === 'watch' && u.st.watch) return { ok: false, why: 'Уже активно' };
   if (id === 'taunt' && !targetsFor(u, id).length) return { ok: false, why: 'Нет врагов рядом' };
   const ty = abType(id, u.side);
-  if ((ty === 'attack' || ty === 'ally' || ty === 'enemy' || ty === 'brazier') && !targetsFor(u, id).length) return { ok: false, why: id === 'heal' ? 'Нет раненых союзников в радиусе ' + ABIL.heal.range + ' и в прямой видимости' : 'Нет целей в досягаемости' };
+  if ((ty === 'attack' || ty === 'ally' || ty === 'enemy' || ty === 'brazier') && !targetsFor(u, id).length) return { ok: false, why: id === 'heal' ? 'Нет раненых союзников в радиусе ' + ABIL.heal.range + ' клеток' : 'Нет целей в досягаемости' };
   return { ok: true };
 }
 function targetsFor(u, id, from) {
@@ -295,7 +295,7 @@ function targetsFor(u, id, from) {
     return alive(foe(u.side)).filter(e => !e.st.concealed && dist(from, e) <= A.range + 0.01 && (A.melee ? meleeOk(from, e) : hasLOS(from, e)));
   }
   if (ty === 'ally') {
-    return alive(u.side).filter(a => dist(from, a) <= A.range + 0.01 && (a === u || hasLOS(from, a)) &&
+    return alive(u.side).filter(a => dist(from, a) <= A.range + 0.01 &&
       (id !== 'heal' || a.hp < a.maxHp || tile(a.x, a.y).burn > 0) && (id !== 'hex' || a.st.blessed <= 0));
   }
   if (id === 'taunt') return alive(foe(u.side)).filter(e => !e.st.concealed && dist(from, e) <= 4.01 && hasLOS(from, e));
