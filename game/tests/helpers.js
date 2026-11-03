@@ -2,7 +2,10 @@
 window.T = {
   // Чистая арена: без объектов, все жаровни убраны, оба игрока — люди.
   setup(opts = {}) {
-    GAME.newGame('order');
+    const ros = { order: [], coven: [] };
+    for (const [side, cls] of opts.units || []) ros[side].push(cls);
+    for (const side of ['order', 'coven']) for (const c of DEFAULT_ROSTER) if (ros[side].length < 6 && !ros[side].includes(c)) ros[side].push(c);
+    GAME.newGame('order', ros);
     const G = GAME.G;
     G.control = { order: 'human', coven: 'human' };
     G.spectator = false; G.scene = 'battle'; G.side = opts.side || 'order';

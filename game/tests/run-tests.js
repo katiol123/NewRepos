@@ -224,7 +224,7 @@ const TESTS = [
     return null;
   }],
   ['Задевание: промах в пределах 10% — половина урона', async () => {
-    const [m, t] = T.setup({ units: [['order', 'marksman', 2, 2], ['coven', 'bastion', 2, 6]] });
+    const [m, t] = T.setup({ units: [['order', 'marksman', 2, 2], ['coven', 'priest', 2, 6]] });
     const c = calcAttack(m, t, 'shot');
     const undo = T.rig([(c.hit + 5) / 100, 0.99]);
     let out; try { out = await doAttack(m, t, 'shot'); } finally { undo(); }
@@ -301,6 +301,137 @@ const TESTS = [
     const [t, front, side] = T.setup({ units: [['coven', 'bastion', 5, 5], ['order', 'marksman', 5, 10], ['order', 'priest', 10, 5]], objs: [['c', 5, 6]] });
     if (T.br(calcAttack(front, t, 'shot'), 'Половинное укрытие') !== -20) return 'спереди нет укрытия';
     if (T.br(calcAttack(side, t, 'shot'), 'Половинное укрытие') !== null) return 'сбоку засчитано укрытие';
+    return null;
+  }],
+
+  // ---------------- Наёмники ----------------
+  ['Арбалетчик: болт пробивает броню, после выстрела нужна перезарядка', async () => {
+    const [x, g] = T.setup({ units: [['order', 'crossbow', 2, 2], ['coven', 'golem', 2, 7]] });
+    const undo = T.rigConst(0.01);
+    try { await useAbility(x, 'heavybolt', g); } finally { undo(); }
+    const lost = g.maxHp - g.hp;
+    if (lost < ABIL.heavybolt.dmg[0]) return 'броня голема уменьшила урон: −' + lost;
+    if (x.loaded) return 'арбалет остался заряжен';
+    if (canUse(x, 'heavybolt').ok) return 'можно стрелять без перезарядки';
+    x.ap = 3; await useAbility(x, 'reload');
+    if (!x.loaded || !canUse(x, 'heavybolt').ok) return 'перезарядка не работает';
+    if (CLASSES.crossbow.mov >= CLASSES.marksman.mov) return 'не медленнее обычного стрелка';
+    if (!(CLASSES.crossbow.armor > 0)) return 'нет брони';
+    return null;
+  }],
+  ['Броня уменьшает физический урон (у обычного выстрела)', async () => {
+    const [m, g] = T.setup({ units: [['order', 'marksman', 2, 2], ['coven', 'golem', 2, 7]] });
+    const undo = T.rig([0.01, 0.99, 0]);  // попадание, без крита, минимальный урон
+    try { await doAttack(m, g, 'shot'); } finally { undo(); }
+    const lost = g.maxHp - g.hp;
+    if (lost !== Math.max(1, ABIL.shot.dmg[0] - g.armor)) return 'урон ' + lost + ' вместо ' + (ABIL.shot.dmg[0] - g.armor);
+    return null;
+  }],
+  ['Берсерк: каждая рана даёт +1 к урону (до +4)', async () => {
+    const [b, e] = T.setup({ units: [['order', 'berserk', 4, 4], ['coven', 'marksman', 4, 5]] });
+    for (let i = 0; i < 6; i++) await damageUnit(b, 1, e, 'hit');
+    if (b.rage !== 4) return 'ярость ' + b.rage + ' вместо 4';
+    const undo = T.rig([0.01, 0.99, 0]);  // попадание, без крита, минимальный урон
+    try { await doAttack(b, e, 'hack'); } finally { undo(); }
+    if (e.maxHp - e.hp !== ABIL.hack.dmg[0] + 4) return 'урон ' + (e.maxHp - e.hp) + ' вместо ' + (ABIL.hack.dmg[0] + 4);
+    if (CLASSES.berserk.mov <= 4) return 'не быстрый';
+    return null;
+  }],
+  ['Волк: 30% увернуться от дальней атаки, рваная рана — кровотечение', async () => {
+    const [w, m, v] = T.setup({ units: [['order', 'wolf', 4, 4], ['coven', 'marksman', 4, 9], ['coven', 'bastion', 4, 5]] });
+    let ev = 0; const N = 200;
+    const orig = Math.random;
+    for (let i = 0; i < N; i++) { w.hp = w.maxHp; w.dead = false; const r = await doAttack(m, w, 'knife', {}); if (r === 'evade') ev++; }
+    const hits = N; const rate = ev / hits;
+    if (rate < 0.15 || rate > 0.45) return 'доля уклонений ' + rate.toFixed(2);
+    w.hp = w.maxHp; w.dead = false; w.ap = 3;
+    const undo = T.rigConst(0.01);
+    try { await useAbility(w, 'rend', v); } finally { undo(); }
+    if (v.st.bleed !== 3) return 'нет кровотечения';
+    const hp = v.hp; await startTurn('coven');
+    if (v.hp !== hp - 2) return 'кровотечение не отнимает 2 ОЗ (было ' + hp + ', стало ' + v.hp + ')';
+    void orig;
+    return null;
+  }],
+  ['Скелет-воин: раз за бой встаёт с 50% ОЗ', async () => {
+    const [s, e] = T.setup({ units: [['order', 'skelwar', 4, 4], ['coven', 'marksman', 4, 9]] });
+    await damageUnit(s, 99, e, 'hit');
+    if (s.dead) return 'погиб с первого раза';
+    if (s.hp !== Math.ceil(s.maxHp / 2)) return 'ОЗ после воскрешения ' + s.hp;
+    await damageUnit(s, 99, e, 'hit');
+    if (!s.dead) return 'воскрес второй раз';
+    return null;
+  }],
+  ['Нежить: −50% от физических дальних атак, видит во тьме', async () => {
+    const [a, s, t] = T.setup({ units: [['order', 'marksman', 2, 2], ['coven', 'skelarch', 2, 7], ['order', 'bastion', 8, 7]] });
+    const undo = T.rigConst(0.99);  // максимальный урон: бросок попадания подменим вручную
+    undo(); const undo2 = T.rig([0.01, 0.99, 0.99]);  // попадание, без крита, максимальный урон
+    let out; try { out = await doAttack(a, s, 'shot'); } finally { undo2(); }
+    const lost = s.maxHp - s.hp;
+    if (out === 'hit' && lost !== Math.floor(ABIL.shot.dmg[1] / 2)) return 'урон ' + lost + ' вместо половины';
+    if (T.br(calcAttack(s, t, 'poisonarrow'), 'Цель во тьме') !== null) return 'нежить получает штраф тьмы';
+    return null;
+  }],
+  ['Скелет-лучник: яд 3 хода — −2 шага, −10 меткости, −1 ОЗ в начале хода', async () => {
+    const [s, v, o] = T.setup({ side: 'coven', units: [['coven', 'skelarch', 2, 2], ['order', 'marksman', 2, 7], ['coven', 'bastion', 9, 7]] });
+    const undo = T.rigConst(0.01);
+    try { await useAbility(s, 'poisonarrow', v); } finally { undo(); }
+    if (v.st.poison !== 3) return 'нет яда';
+    if (effMov(v) !== v.mov - 2) return 'шаг не уменьшен';
+    if (T.br(calcAttack(v, o, 'shot'), 'Яд') !== -10) return 'нет −10 к меткости';
+    const hp = v.hp; await startTurn('order');
+    if (v.hp !== hp - 1) return 'яд не отнял 1 ОЗ';
+    await startTurn('order'); await startTurn('order');
+    if (v.st.poison !== 0) return 'яд длится дольше 3 ходов';
+    if (CLASSES.skelarch.traits.includes('revive')) return 'лучник воскресает';
+    return null;
+  }],
+  ['Голем: землетрясение бьёт всех вокруг и крошит укрытия, видит во тьме', async () => {
+    const [g, e, a, f] = T.setup({ units: [['order', 'golem', 5, 5], ['coven', 'marksman', 6, 6], ['order', 'priest', 4, 5], ['coven', 'mystic', 8, 8]], objs: [['h', 5, 4]] });
+    await useAbility(g, 'quake');
+    if (e.hp === e.maxHp) return 'враг рядом не задет';
+    if (a.hp === a.maxHp) return 'союзник рядом не задет (обещано «и своих»)';
+    if (f.hp !== f.maxHp) return 'задет дальний враг';
+    if (GAME.G.map[4][5].obj) return 'соседнее надгробие уцелело';
+    if (T.br(calcAttack(g, f, 'smash', { from: { x: 7, y: 8 } }), 'Цель во тьме') !== null) return 'штраф тьмы';
+    return null;
+  }],
+  ['Катапульта: не ходит, стоит ресурс, ядро равновероятно падает в одну из 9 клеток', async () => {
+    const [c, e] = T.setup({ units: [['order', 'catapult', 1, 1], ['coven', 'bastion', 12, 12]] });
+    const r = reach(c); let n = 0; for (const v of r.cost) if (isFinite(v)) n++;
+    if (n !== 1) return 'катапульта может ходить';
+    if (!ABIL.lob.res) return 'не тратит ресурс';
+    if (lobTiles(c).some(t => Math.hypot(t.x - 1, t.y - 1) < ABIL.lob.minRange)) return 'нет мёртвой зоны';
+    const counts = {}; const N = 900;
+    for (let i = 0; i < N; i++) { const h = lobLanding({ x: 8, y: 8 }); const k = (h.x - 8) + ',' + (h.y - 8); counts[k] = (counts[k] || 0) + 1; }
+    if (Object.keys(counts).length !== 9) return 'клеток попадания: ' + Object.keys(counts).length;
+    for (const k in counts) if (counts[k] < N / 9 * 0.6 || counts[k] > N / 9 * 1.4) return 'неравномерно: ' + JSON.stringify(counts);
+    const r0 = GAME.G.res.order; c.ap = 3; await useAbility(c, 'lob', { x: 8, y: 8 });
+    if (GAME.G.res.order !== r0 - ABIL.lob.res) return 'ресурс не списан';
+    return null;
+  }],
+  ['Фонарщик: несёт свет, вспышка ослепляет (−20) и срывает сокрытие, фонарь можно прикрыть', async () => {
+    const [l, e, s, o] = T.setup({ units: [['order', 'lantern', 5, 5], ['coven', 'marksman', 7, 5], ['coven', 'shade', 5, 7], ['order', 'bastion', 10, 10]] });
+    if (!isLit(5, 6)) return 'фонарь не светит';
+    s.st.concealed = true;
+    await useAbility(l, 'flash');
+    if (e.st.blind !== 1) return 'враг не ослеплён';
+    if (T.br(calcAttack(e, o, 'shot'), 'Ослеплён') !== -20) return 'нет −20';
+    if (s.st.concealed) return 'сокрытие не сорвано';
+    await useAbility(l, 'shutter');
+    if (isLit(5, 6)) return 'прикрытый фонарь светит';
+    GAME.G.side = 'coven'; endTurn();
+    if (e.st.blind) return 'ослепление не спало после хода врага';
+    return null;
+  }],
+  ['Сбор отрядов: до 6 бойцов, наёмники доступны обеим сторонам', () => {
+    GAME.newGame('order', { order: ['golem', 'catapult', 'wolf', 'bastion', 'skelwar', 'lantern'], coven: ['golem', 'crossbow', 'berserk', 'skelarch', 'priest', 'shade'] });
+    const G = GAME.G;
+    if (G.units.filter(u => u.side === 'order').length !== 6) return 'у Ордена не 6';
+    if (!G.units.some(u => u.side === 'coven' && u.cls === 'golem')) return 'у Ковена нет голема';
+    const cells = new Set(G.units.map(u => u.x + ',' + u.y)); if (cells.size !== 12) return 'бойцы стоят друг на друге';
+    for (const u of G.units) if (!walkable(u.x, u.y)) return 'боец в стене: ' + u.name;
+    GAME.newGame('order', { order: DEFAULT_ROSTER, coven: DEFAULT_ROSTER });
     return null;
   }],
 ];

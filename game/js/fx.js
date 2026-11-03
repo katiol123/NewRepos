@@ -62,7 +62,8 @@ FX.update = function (dt) {
     const x = pr.ax + (pr.bx - pr.ax) * f, y = pr.ay + (pr.by - pr.ay) * f - Math.sin(f * Math.PI) * pr.arc;
     pr.px = pr.x; pr.py = pr.y; pr.x = x; pr.y = y;
     const col = pr.col;
-    if (pr.type === 'orb' || pr.type === 'fireball' || pr.type === 'hex' || pr.type === 'heal') {
+    if (pr.type === 'boulder') { if (Math.random() < 0.5) FX.spawn({ type: 'smoke', x, y, vx: 0, vy: -5, life: 0.6, size: 4, col: '80,75,85' }); }
+    else if (pr.type === 'orb' || pr.type === 'fireball' || pr.type === 'hex' || pr.type === 'heal') {
       for (let k = 0; k < 3; k++) FX.spawn({ type: 'glow', x: x + rnd(-2, 2), y: y + rnd(-2, 2), vx: rnd(-15, 15), vy: rnd(-15, 15), life: rnd(0.25, 0.5), size: pr.type === 'fireball' ? rnd(3, 6) : rnd(2, 3.5), col });
     } else if (pr.type === 'arrow' || pr.type === 'knife') {
       if (Math.random() < 0.6) FX.spawn({ type: 'glow', x, y, vx: 0, vy: 0, life: 0.25, size: 1.2, col });
@@ -164,6 +165,9 @@ FX.draw = function (c, time) {
       c.translate(pr.x, pr.y); c.rotate(ang);
       c.strokeStyle = rgba(pr.col, 0.6); c.lineWidth = 2; c.beginPath(); c.moveTo(-22, 0); c.lineTo(0, 0); c.stroke();
       c.strokeStyle = '#fff6e0'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(-8, 0); c.lineTo(3, 0); c.stroke();
+    } else if (pr.type === 'boulder') {
+      c.globalCompositeOperation = 'source-over';
+      ell(c, pr.x, pr.y, 5, 5, '#5d5862', 'rgba(0,0,0,0.7)'); ell(c, pr.x - 1.5, pr.y - 1.5, 1.6, 1.6, '#8a8590');
     } else {
       const r = pr.type === 'fireball' ? 9 : 6;
       const g = c.createRadialGradient(pr.x, pr.y, 0, pr.x, pr.y, r * 2.5);
@@ -189,9 +193,9 @@ FX.projectile = function (from, to, type, side, tgtUnit) {
     return wait(220);
   }
   const d = Math.hypot(b.x - a.x, b.y - a.y);
-  const speed = type === 'arrow' ? 900 : type === 'knife' ? 700 : type === 'fireball' ? 380 : 500;
+  const speed = type === 'arrow' ? 900 : type === 'knife' ? 700 : type === 'fireball' ? 380 : type === 'boulder' ? 330 : 500;
   const dur = Math.max(0.12, d / speed);
-  const arc = type === 'fireball' ? 60 : type === 'heal' || type === 'hex' ? 30 : type === 'arrow' ? d * 0.06 : 4;
+  const arc = type === 'boulder' ? 150 : type === 'fireball' ? 60 : type === 'heal' || type === 'hex' ? 30 : type === 'arrow' ? d * 0.06 : 4;
   // вспышка у стрелка
   FX.spawn({ type: 'flash', x: a.x + 10 * from.face, y: ay, vx: 0, vy: 0, life: 0.25, size: 18, col });
   return new Promise(r => {

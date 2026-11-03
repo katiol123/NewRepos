@@ -8,10 +8,16 @@ const $ = s => document.querySelector(s);
 UI.init = function () {
   // меню
   document.querySelectorAll('.card[data-mode]').forEach(el => {
-    el.addEventListener('click', () => { SFX.init(); UI.startGame(el.dataset.mode); });
+    el.addEventListener('click', () => { SFX.init(); UI.openArmy(el.dataset.mode); });
     el.addEventListener('mouseenter', () => { SFX.init(); SFX.play('click'); });
   });
   $('#btnCodex').onclick = () => UI.codex(true);
+  document.querySelectorAll('.army-tab').forEach(t => t.onclick = () => { UI.armySide = t.dataset.side; SFX.play('click'); UI.renderArmy(); });
+  $('#armyBack').onclick = () => UI.closeArmy();
+  $('#armyGo').onclick = () => { UI.closeArmy(); UI.startGame(UI.armyMode); };
+  $('#armyDefault').onclick = () => { UI.rosters[UI.armySide] = DEFAULT_ROSTER.slice(); UI.renderArmy(); };
+  $('#armyRandom').onclick = () => UI.armyRandom(UI.armySide);
+  $('#armyClear').onclick = () => { UI.rosters[UI.armySide] = []; UI.renderArmy(); };
   $('#codexClose').onclick = () => UI.codex(false);
   $('#endTurn').onclick = () => UI.tryEndTurn();
   $('#ultBtn').onclick = () => { if (UI.humanTurn()) useUlt(G.side); };
@@ -57,7 +63,7 @@ UI.startGame = function (mode) {
   $('#endscreen').classList.add('hidden');
   document.body.classList.remove('ended');
   UI.veil(() => {
-    newGame(mode);
+    newGame(mode, UI.rosters);
     G.scene = 'battle';
     document.body.classList.add('in-battle');
     $('#menu').classList.add('hidden');
@@ -67,7 +73,7 @@ UI.startGame = function (mode) {
     G.speed = G.spectator ? 1 : 1;
     document.querySelectorAll('#specBar button').forEach(x => x.classList.toggle('on', x.dataset.speed === '1'));
     R.cam.tz = R.baseZ; R.cam.tx = 0; R.cam.ty = 240;
-    UI.buildRoster(); UI.refresh(); UI.log();
+    document.body.classList.toggle('big-roster', G.units.length > 10); UI.buildRoster(); UI.refresh(); UI.log();
   }).then(() => startTurn(G.first));
 };
 UI.toMenu = function () {
@@ -106,6 +112,70 @@ UI.ultFlash = function (side) {
 };
 
 // ---------------- Ростер ----------------
+// ---------------- Сбор отрядов ----------------
+UI.rosters = { order: DEFAULT_ROSTER.slice(), coven: DEFAULT_ROSTER.slice() };
+UI.openArmy = function (mode) {
+  UI.armyMode = mode;
+  const a = $('#army'); a.classList.remove('hidden');
+  $('#armyMode').textContent = mode === 'spectator' ? 'Режим зрителя: обе стороны ведёт ИИ' : `Вы ведёте ${mode === 'order' ? 'Орден' : 'Ковен'}, противника — ИИ`;
+  UI.armySide = mode === 'coven' ? 'coven' : 'order';
+  UI.armyUnits = [];
+  UI.renderArmy();
+};
+UI.closeArmy = function () { $('#army').classList.add('hidden'); UI.armyUnits = []; };
+UI.armyCanAdd = function (side, cls) {
+  const r = UI.rosters[side];
+  if (r.length >= MAX_SQUAD) return 'Отряд полон (' + MAX_SQUAD + ')';
+  if (CLASSES[cls].faction && r.includes(cls)) return 'Герой фракции — только один';
+  if (cls === 'catapult' && r.includes('catapult')) return 'Только одна катапульта';
+  if (r.filter(c => c === cls).length >= 2) return 'Не больше двух одинаковых';
+  return null;
+};
+UI.renderArmy = function () {
+  const side = UI.armySide || 'order';
+  document.querySelectorAll('.army-tab').forEach(t => t.classList.toggle('on', t.dataset.side === side));
+  UI.armyUnits = [];
+  const mk = (cls, sd, big) => { const cv = document.createElement('canvas'); cv.width = big ? 96 : 64; cv.height = big ? 96 : 64; const u = makeUnit(sd, cls, 0, 0); u.face = 1; UI.armyUnits.push({ cv, u, sc: big ? 1.6 : 1.05 }); return cv; };
+  // отряды
+  for (const sd of ['order', 'coven']) {
+    const box = $(sd === 'order' ? '#squadOrder' : '#squadCoven'); box.innerHTML = '';
+    const r = UI.rosters[sd];
+    for (let i = 0; i < MAX_SQUAD; i++) {
+      const slot = document.createElement('div'); slot.className = 'slot' + (r[i] ? '' : ' empty');
+      if (r[i]) {
+        slot.appendChild(mk(r[i], sd, false));
+        slot.insertAdjacentHTML('beforeend', `<span>${CLASSES[r[i]].names[sd]}</span><b class="x-rm">×</b>`);
+        slot.dataset.tip = 'Убрать из отряда';
+        slot.onclick = () => { r.splice(i, 1); SFX.play('click'); UI.renderArmy(); };
+      } else slot.innerHTML = '<span>пусто</span>';
+      box.appendChild(slot);
+    }
+    $(sd === 'order' ? '#cntOrder' : '#cntCoven').textContent = `${r.length}/${MAX_SQUAD}`;
+  }
+  // пул
+  const pool = $('#armyPool'); pool.innerHTML = '';
+  const order = Object.keys(CLASSES).filter(c => CLASSES[c].faction).concat(Object.keys(CLASSES).filter(c => CLASSES[c].merc));
+  for (const cls of order) {
+    const C = CLASSES[cls];
+    const why = UI.armyCanAdd(side, cls);
+    const card = document.createElement('div'); card.className = 'pcard' + (why ? ' off' : '') + (C.merc ? ' merc' : ' fac-' + side);
+    card.appendChild(mk(cls, side, true));
+    const hp = (side === 'coven' && C.hpCoven) || C.hp;
+    card.insertAdjacentHTML('beforeend', `<div class="pc-t">${C.names[side]}</div><div class="pc-r">${C.merc ? 'наёмник' : 'герой фракции'} · ${C.role}</div>
+      <div class="pc-s">ОЗ ${hp} · Шаг ${C.mov} · Броня ${C.armor || 0}</div><div class="pc-d">${C.desc}</div>`);
+    card.dataset.tip = `<b>${C.names[side]}</b><br>${C.desc}<br><span class="t-dim">Умения: ${C.abil.map(id => abName(id, side)).join(', ')}</span>${why ? `<br><span class="t-bad">${why}</span>` : ''}`;
+    card.onclick = () => { const w = UI.armyCanAdd(side, cls); if (w) { UI.toast(w); return; } UI.rosters[side].push(cls); SFX.play('select'); UI.renderArmy(); };
+    pool.appendChild(card);
+  }
+  $('#armyGo').disabled = !UI.rosters.order.length || !UI.rosters.coven.length;
+};
+UI.armyRandom = function (side) {
+  const r = UI.rosters[side] = [];
+  const all = Object.keys(CLASSES);
+  let guard = 0;
+  while (r.length < MAX_SQUAD && guard++ < 200) { const c = all[Math.floor(Math.random() * all.length)]; if (!UI.armyCanAdd(side, c)) r.push(c); }
+  UI.renderArmy();
+};
 UI.buildRoster = function () {
   const el = $('#roster'); el.innerHTML = '';
   for (const side of ['order', 'coven']) {
@@ -194,7 +264,15 @@ UI.unitPanel = function () {
   let ap = ''; for (let i = 0; i < Math.max(MAX_AP, u.ap); i++) ap += `<i class="${i < u.ap ? 'on' : ''}"></i>`;
   $('#uAp').innerHTML = `<span>ОД</span>${ap}`;
   const st = [];
-  st.push(`Мет. ${u.aim}`, `Защ. ${u.def}`, `Шаг ${u.mov}`);
+  st.push(`Мет. ${u.aim}`, `Защ. ${u.def}`, `Шаг ${effMov(u)}${effMov(u) < u.mov ? '↓' : ''}`);
+  if (u.armor) st.push(`Броня ${u.armor}`);
+  for (const tr of CLASSES[u.cls].traits || []) { const n = TRAIT_NAMES[tr]; if (n) st.push(`<b class="s-gold">${n}</b>`); }
+  if (u.rage) st.push(`<b class="s-red">Ярость +${u.rage}</b>`);
+  if (CLASSES[u.cls].abil.includes('heavybolt')) st.push(u.loaded ? '<b class="s-gold">заряжен</b>' : '<b class="s-red">разряжен</b>');
+  if (u.st.poison > 0) st.push(`<b class="s-red">Яд ${u.st.poison}</b>`);
+  if (u.st.bleed > 0) st.push(`<b class="s-red">Кровотечение ${u.st.bleed}</b>`);
+  if (u.st.blind > 0) st.push('<b class="s-red">Ослеплён</b>');
+  if (hasTrait(u, 'revive')) st.push(u.revived ? '<b class="s-red">уже вставал</b>' : '<b class="s-gold">встанет раз</b>');
   if (u.guard) st.push(`<b class="s-guard">Стойкость +${u.guard}</b>`);
   if (u.st.bulwark) st.push('<b class="s-gold">Бастион</b>');
   if (u.st.watch) st.push(`<b class="s-gold">Бдение ×${u.st.watch}</b>`);
@@ -295,7 +373,8 @@ UI.unitTip = function (u) {
   const st = [];
   if (u.st.watch) st.push('Бдение'); if (u.st.bulwark) st.push('Бастион'); if (u.st.concealed) st.push('Сокрыт');
   if (u.st.blessed > 0) st.push('Благословлён'); if (u.st.cursed > 0) st.push('Проклят'); if (u.guard) st.push('Стойкость +' + u.guard);
-  return `<b class="c-${u.side}">${u.name}</b><br><span class="t-dim">${u.title} · ${CLASSES[u.cls].role}</span><br>ОЗ ${u.hp}/${u.maxHp} · Мет. ${u.aim} · Защ. ${u.def}${st.length ? '<br>' + st.join(', ') : ''}<br><span class="t-dim">${CLASSES[u.cls].desc}</span>`;
+  if (u.st.poison > 0) st.push('Яд ' + u.st.poison); if (u.st.bleed > 0) st.push('Кровотечение ' + u.st.bleed); if (u.st.blind > 0) st.push('Ослеплён'); if (u.rage) st.push('Ярость +' + u.rage);
+  return `<b class="c-${u.side}">${u.name}</b><br><span class="t-dim">${u.title} · ${CLASSES[u.cls].role}</span><br>ОЗ ${u.hp}/${u.maxHp} · Мет. ${u.aim} · Защ. ${u.def}${u.armor ? ' · Броня ' + u.armor : ''}${st.length ? '<br>' + st.join(', ') : ''}<br><span class="t-dim">${CLASSES[u.cls].desc}</span>`;
 };
 
 UI.whyNot = function (s, id, t) {
@@ -326,6 +405,11 @@ UI.onDown = function (e) {
   const s = G.sel; const u = unitAt(t.x, t.y);
   if (G.mode && s) {
     const ty = abType(G.mode, s.side);
+    if (ty === 'lob') {
+      if (R.lobCache(s).some(q => q.x === t.x && q.y === t.y)) useAbility(s, G.mode, t);
+      else { G.mode = null; UI.refresh(); }
+      return;
+    }
     if (ty === 'aoe') {
       if (R.aoeCache(s).some(q => q.x === t.x && q.y === t.y)) useAbility(s, G.mode, t);
       else { G.mode = null; UI.refresh(); }
@@ -404,7 +488,7 @@ UI.showEnd = function () {
   else if (G.spectator) { title = `${FACTIONS[w].short} побеждает`; cls = w; }
   else { title = isAI(w) ? 'Поражение' : 'Победа'; cls = isAI(w) ? 'lose' : 'win'; }
   const row = s => { const S = G.stats[s]; return `<div class="es-col c-${s}"><h3>${FACTIONS[s].short}</h3>
-    <div>Урон: <b>${S.dmg}</b></div><div>Убийств: <b>${S.kills}</b></div><div>Точность: <b>${S.shots ? Math.round(S.hits / S.shots * 100) : 0}%</b></div><div>Алтарь: <b>${G.altar[s]}/${ALTAR_WIN}</b></div><div>Выжило: <b>${alive(s).length}/5</b></div></div>`; };
+    <div>Урон: <b>${S.dmg}</b></div><div>Убийств: <b>${S.kills}</b></div><div>Точность: <b>${S.shots ? Math.round(S.hits / S.shots * 100) : 0}%</b></div><div>Алтарь: <b>${G.altar[s]}/${ALTAR_WIN}</b></div><div>Выжило: <b>${alive(s).length}/${G.units.filter(u => u.side === s).length}</b></div></div>`; };
   $('#endTitle').textContent = title; $('#endTitle').className = 'es-' + cls;
   $('#endReason').textContent = G.winReason + ` (раунд ${G.round})`;
   $('#endStats').innerHTML = row('order') + row('coven');
@@ -423,6 +507,10 @@ UI.tick = function (t) {
   if (G.scene === 'menu' && UI.menuUnits) for (const m of UI.menuUnits) {
     const c = m.cv.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, m.cv.width, m.cv.height);
     c.translate(m.cv.width / 2, m.cv.height - 8); c.scale(2.4, 2.4); R.drawUnit(c, m.u, t);
+  }
+  if (UI.armyUnits && UI.armyUnits.length) for (const m of UI.armyUnits) {
+    const c = m.cv.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, m.cv.width, m.cv.height);
+    c.translate(m.cv.width / 2, m.cv.height - 6); c.scale(m.sc, m.sc); R.drawUnit(c, m.u, t);
   }
   if (G.scene === 'battle') {
     if (G.sel && !G.sel.dead) UI.drawMini($('#portrait'), G.sel, 2.1, t);

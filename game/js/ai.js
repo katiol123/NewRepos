@@ -11,8 +11,8 @@ AI.takeTurn = async function (side) {
   // ульта
   AI.considerUlt(side);
   if (G.busy) await waitUntil(() => !G.busy);
-  const order = { shade: 0, marksman: 1, mystic: 2, bastion: 3, priest: 4 };
-  const us = alive(side).sort((a, b) => order[a.cls] - order[b.cls]);
+  const order = { shade: 0, wolf: 0.5, catapult: 0.8, marksman: 1, crossbow: 1, skelarch: 1, lantern: 1.5, mystic: 2, berserk: 2.5, skelwar: 2.5, golem: 2.8, bastion: 3, priest: 4 };
+  const us = alive(side).sort((a, b) => (order[a.cls] ?? 2) - (order[b.cls] ?? 2));
   for (const u of us) {
     if (G.gameId !== gid || G.winner) return;
     if (u.dead) continue;
@@ -71,7 +71,7 @@ AI.pos = function (u, x, y) {
   let dn = 99;
   for (const e of enemies) {
     const d = Math.hypot(e.x - x, e.y - y); if (d < dn) dn = d;
-    const ranged = e.cls !== 'bastion';
+    const ranged = CLASSES[e.cls].abil.some(id => ABIL[id].type === 'attack' && !ABIL[id].melee) || e.cls === 'catapult';
     const threat = ranged ? (d <= 11) : (d <= e.mov * 2 + 1.5);
     if (!threat) continue;
     if (!hasLOS(e, P)) { s += 0.3; continue; }
@@ -90,7 +90,8 @@ AI.pos = function (u, x, y) {
   else if (u.side === 'coven') s += lit ? -0.2 : 0.5;
   else s += lit ? 1.0 : -0.4;
   // роли
-  const W = { marksman: [8, 0.32], mystic: [6, 0.32], priest: [7, 0.25], bastion: [1.5, 0.45], shade: [1.5, 0.3] }[u.cls];
+  const W = { marksman: [8, 0.32], mystic: [6, 0.32], priest: [7, 0.25], bastion: [1.5, 0.45], shade: [1.5, 0.3],
+    crossbow: [7, 0.3], skelarch: [7, 0.3], berserk: [1.2, 0.5], wolf: [1.2, 0.4], skelwar: [1.3, 0.4], golem: [1.3, 0.45], lantern: [2.5, 0.35], catapult: [8, 0] }[u.cls] || [4, 0.3];
   if (dn < 99) s -= Math.abs(dn - W[0]) * W[1];
   if (dn < 99 && !enemies.some(e => hasLOS(e, P))) s -= dn * 0.15;
   if (u.cls === 'priest' || u.cls === 'marksman') {
@@ -122,11 +123,15 @@ AI.bestAction = function (u, P, ap) {
     const A = ABIL[id];
     if (abCost(u, id) > ap || (A.apAll && ap < 1)) continue;
     if (A.res && G.res[u.side] < A.res) continue;
+    if (A.needsLoad && !u.loaded) continue;
     const ty = abType(id, u.side);
     if (ty === 'attack') {
       for (const e of targetsFor(virt, id, P)) {
         const c = calcAttack(virt, e, id, { from: P });
-        const avg = avgDmg(id);
+        let avg = avgDmg(id) + (A.rage ? u.rage : 0);
+        if (A.phys && !A.armorPierce) avg = Math.max(1, avg - e.armor);
+        if (A.phys && !A.melee && hasTrait(e, 'undead')) avg = Math.max(1, avg / 2);
+        if (!A.melee && hasTrait(e, 'evade')) avg *= 0.7;
         const pk = c.hit / 100;
         const exp = pk * avg * (1 + c.crit / 200);
         const killP = A.dmg[1] * (c.crit > 30 ? 1.5 : 1) >= e.hp ? pk * clamp((A.dmg[1] * (1 + c.crit / 100) - e.hp + 1) / (A.dmg[1] - A.dmg[0] + 1), 0.15, 1) : 0;
@@ -190,6 +195,31 @@ AI.bestAction = function (u, P, ap) {
       if (u.st.concealed || (u.side === 'coven' && isLit(P.x, P.y))) continue;
       if (alive(foe(u.side)).some(e => !e.st.concealed && Math.max(Math.abs(e.x - P.x), Math.abs(e.y - P.y)) <= 2)) continue;
       consider(2.2, id, null);
+    } else if (id === 'reload') {
+      if (u.loaded) continue;
+      consider(3.0, id, null);
+    } else if (id === 'shutter') {
+      // Ковену фонарь мешает, Ордену — помогает
+      const want = u.side === 'order';
+      if (u.lanternOn !== want) consider(1.0, id, null);
+    } else if (id === 'flash') {
+      const ts = alive(foe(u.side)).filter(e => Math.hypot(e.x - P.x, e.y - P.y) <= 3 && hasLOS(P, e));
+      const hidden = alive(foe(u.side)).filter(e => e.st.concealed && Math.hypot(e.x - P.x, e.y - P.y) <= 3).length;
+      if (ts.length + hidden) consider(ts.filter(e => !e.st.concealed).length * 1.5 + hidden * 2.5 - 0.5, id, null);
+    } else if (id === 'quake') {
+      let v = -2;
+      for (const w of alive()) if (w !== u && Math.max(Math.abs(w.x - P.x), Math.abs(w.y - P.y)) === 1) v += w.side === u.side ? -4.5 : (w.hp <= 4 ? 7 : 4);
+      if (v > 0) consider(v, id, null);
+    } else if (id === 'lob') {
+      if (P.x !== u.x || P.y !== u.y) continue;
+      const enemies = alive(foe(u.side)).filter(e => !e.st.concealed);
+      for (const e of enemies) {
+        const d = Math.hypot(e.x - u.x, e.y - u.y); if (d < ABIL.lob.minRange || d > ABIL.lob.range) continue;
+        // ожидание по 9 клеткам
+        let v = 0;
+        for (const q of lobArea(e.x, e.y)) { const o = unitAt(q.x, q.y); if (o && o.side !== u.side) v += (7 - o.armor) / 9 * (o.hp <= 7 ? 2 : 1); if (o && o.side === u.side) v -= 6 / 9 * 1.5; }
+        consider(v * 1.6 - 0.6, id, { x: e.x, y: e.y });
+      }
     } else if (id === 'brazier') {
       const b = adjBrazier(virt, P); if (!b) continue;
       let near = 0; for (const e of alive(foe(u.side))) if (Math.hypot(e.x - b.x, e.y - b.y) < 4) near++;

@@ -109,6 +109,23 @@
   </div>
 </div>
 
+<div id="army" class="hidden">
+  <div class="army-box">
+    <div class="army-head"><div class="mb-title">Сбор отрядов</div><div id="armyMode" class="t-dim"></div></div>
+    <div class="army-squads">
+      <div class="squad sq-order"><div class="sq-h"><span>Орден Пепельного Света</span><b id="cntOrder"></b></div><div id="squadOrder" class="slots"></div></div>
+      <div class="squad sq-coven"><div class="sq-h"><span>Ковен Пустой Луны</span><b id="cntCoven"></b></div><div id="squadCoven" class="slots"></div></div>
+    </div>
+    <div class="army-bar">
+      <span>Нанять в:</span><button class="army-tab" data-side="order">Орден</button><button class="army-tab" data-side="coven">Ковен</button>
+      <span class="sp"></span><button id="armyDefault" class="btn-ghost sm">Классический отряд</button><button id="armyRandom" class="btn-ghost sm">Случайно</button><button id="armyClear" class="btn-ghost sm">Очистить</button>
+    </div>
+    <div id="armyPool"></div>
+    <div class="army-foot"><span class="t-dim">До 6 бойцов. Герои фракции — по одному, наёмники — до двух одинаковых, катапульта — одна. Клик по бойцу в отряде убирает его.</span>
+      <span class="sp"></span><button id="armyBack" class="btn-ghost">Назад</button><button id="armyGo" class="btn-gold">В бой</button></div>
+  </div>
+</div>
+
 <div id="codex" class="modal hidden"><div class="modal-box codex-box">
   <button id="codexClose" class="x">×</button>
   <div class="mb-title">Кодекс правил</div>
@@ -129,6 +146,17 @@
       <div class="cls"><b>Пиромант / Гексер</b> — магия не боится тьмы. «Огненный вал» бьёт по площади, крушит укрытия и поджигает землю. Осторожно — бьёт и своих.</div>
       <div class="cls"><b>Клинок покаяния / Тень</b> — 6 шагов за ОД. Тень Ковена: «Сокрытие» во тьме за 1 ОД; Клинок: «Покаяние» где угодно за 2 ОД (если враг не ближе 2 клеток), удар из тени с огромным шансом крита по фланговой цели.</div>
       <div class="cls"><b>Капеллан / Костяная ведьма</b> — исцеление и Благословение (Орден) или Проклятие (Ковен). Исцелению и Благословению не нужна прямая видимость — только дальность.</div></section>
+    <section class="wide"><h4>Наёмники (служат любой стороне)</h4>
+      <div class="cls"><b>Броня</b> снижает урон от физических атак (клинки, стрелы, ядра) на своё значение, минимум до 1. Магия, огонь, яд и кровотечение броню игнорируют.</div>
+      <div class="cls"><b>Арбалетчик</b> — медленный, броня 1. Тяжёлый болт пробивает броню, после выстрела нужна «Перезарядка» (1 ОД).</div>
+      <div class="cls"><b>Берсерк</b> — быстрый, без брони. Каждая полученная рана — +1 к урону его «Рубки» (до +4, на весь бой).</div>
+      <div class="cls"><b>Волк</b> — очень быстрый, мало ОЗ. 30% увернуться от любой дальней атаки. «Рваная рана» — кровотечение 2 ОЗ за ход, 3 хода.</div>
+      <div class="cls"><b>Скелет-воин</b> — слаб, но раз за бой встаёт после смертельного удара с 50% ОЗ.</div>
+      <div class="cls"><b>Скелет-лучник</b> — отравленные стрелы: 3 хода −2 шага, −10 к меткости, −1 ОЗ в начале хода. Вся нежить получает вдвое меньше урона от стрел и ядер и видит во тьме.</div>
+      <div class="cls"><b>Каменный голем</b> — 24 ОЗ, броня 2, видит во тьме. «Землетрясение» бьёт всех на соседних клетках (и своих) и крошит укрытия рядом.</div>
+      <div class="cls"><b>Катапульта</b> — не двигается. «Залп» за 2 ОД и 2 ресурса фракции, дальность 4–14, стены не мешают. Ядро падает в случайную из 9 клеток квадрата 3×3 вокруг цели.</div>
+      <div class="cls"><b>Фонарщик</b> — несёт фонарь (свет радиусом 2), который можно прикрыть. «Вспышка» ослепляет врагов в радиусе 3 (−20 к меткости на их ход) и срывает невидимость.</div>
+    </section>
   </div>
 </div></div>
 

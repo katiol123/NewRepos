@@ -44,31 +44,52 @@ function buildMap() {
   }
 }
 
+const NAME_IDX = {};
+function unitName(side, cls) {
+  if (CLASSES[cls].faction) return UNIT_NAMES[side][cls];
+  const k = side + cls; const i = NAME_IDX[k] = (NAME_IDX[k] || 0) + 1;
+  const pool = MERC_NAMES[cls]; const off = side === 'order' ? 0 : 1;
+  return pool[(i - 1 + off) % pool.length];
+}
+const hasTrait = (u, t) => (CLASSES[u.cls].traits || []).includes(t);
 function makeUnit(side, cls, x, y) {
   const C = CLASSES[cls];
   return {
-    id: ++UID, side, cls, name: UNIT_NAMES[side][cls], title: C.names[side],
+    id: ++UID, side, cls, name: unitName(side, cls), title: C.names[side],
+    armor: C.armor || 0, rage: 0, revived: false, loaded: true, lanternOn: true,
     x, y, rx: x, ry: y, hp: (side === 'coven' && C.hpCoven) || C.hp, maxHp: (side === 'coven' && C.hpCoven) || C.hp, mov: C.mov, aim: C.aim, def: C.def, crit: C.crit,
     ap: 0, guard: 0, bloodUsed: false,
-    st: { bulwark: false, watch: 0, concealed: false, blessed: 0, cursed: 0, taunt: null },
+    st: { bulwark: false, watch: 0, concealed: false, blessed: 0, cursed: 0, taunt: null, poison: 0, bleed: 0, blind: 0 },
     face: side === 'order' ? 1 : -1, dead: false, kills: 0,
     anim: { flash: 0, lunge: 0, lx: 0, ly: 0, dying: 0, hurt: 0, cast: 0 },
   };
 }
 
-function spawnUnits() {
+const DEFAULT_ROSTER = ['bastion', 'marksman', 'mystic', 'shade', 'priest'];
+const isFront = c => ['bastion', 'shade', 'berserk', 'wolf', 'skelwar', 'golem'].includes(c);
+function spawnUnits(rosters) {
   G.units = [];
-  for (const [cls, x, y] of SPAWN_COVEN) {
-    G.units.push(makeUnit('coven', cls, x, y));
-    G.units.push(makeUnit('order', cls, 15 - x, 15 - y));
+  for (const k in NAME_IDX) delete NAME_IDX[k];
+  rosters = rosters || { order: DEFAULT_ROSTER, coven: DEFAULT_ROSTER };
+  for (const side of ['coven', 'order']) {
+    // ближники — на передние клетки, катапульта — в самый тыл
+    const list = rosters[side].slice(0, MAX_SQUAD).map((c, i) => ({ c, i }))
+      .sort((a, b) => (a.c === 'catapult') - (b.c === 'catapult') || isFront(b.c) - isFront(a.c) || a.i - b.i);
+    const slots = SLOTS_COVEN.slice();
+    if (list.some(o => o.c === 'catapult')) { const back = slots.splice(slots.length - 1, 1)[0]; slots.splice(list.length - 1, 0, back); }
+    list.forEach((o, i) => {
+      const [x, y] = slots[i];
+      G.units.push(side === 'coven' ? makeUnit('coven', o.c, x, y) : makeUnit('order', o.c, 15 - x, 15 - y));
+    });
   }
 }
 
-function newGame(mode) {
+function newGame(mode, rosters) {
+  if (rosters) G.rosters = rosters;
   G.gameId++;
   Timers.length = 0;
   FX.clear();
-  buildMap(); spawnUnits();
+  buildMap(); spawnUnits(G.rosters);
   G.round = 1; G.side = 'order'; G.res = { order: 2, coven: 4 }; G.altar = { order: 0, coven: 0 };
   G.dawn = 0; G.eclipse = 0; G.ultRound = { order: -9, coven: -9 };
   G.first = G.forceFirst || (Math.random() < 0.5 ? 'order' : 'coven');
@@ -97,6 +118,7 @@ function lightSources(forRender) {
       else L.push({ x, y, r: 1.9, i: -1.0, kind: 'void' });
     }
   }
+  if (G.eclipse <= 0) for (const u of G.units) if (!u.dead && hasTrait(u, 'lantern') && u.lanternOn) L.push({ x: forRender ? u.rx : u.x, y: forRender ? u.ry : u.y, r: 2.7, i: 1.0, kind: 'lantern' });
   if (forRender) L.push({ x: 7.5, y: 7.5, r: 2.4, i: 0.4, kind: 'altar', visual: true });
   return L;
 }
@@ -125,7 +147,7 @@ const isLit = (x, y) => lightAt(x, y) >= 0.45;
 
 // ---------------- Поиск пути ----------------
 function reach(u, apBudget) {
-  const budget = (apBudget === undefined ? u.ap : apBudget) * u.mov;
+  const budget = (apBudget === undefined ? u.ap : apBudget) * effMov(u);
   const cost = new Float32Array(MW * MH).fill(Infinity);
   const prev = new Int16Array(MW * MH).fill(-1);
   const k0 = u.y * MW + u.x; cost[k0] = 0;
@@ -155,7 +177,8 @@ function pathFrom(r, x, y) {
   while (r.prev[k] !== -1) { p.unshift({ x: k % MW, y: (k / MW) | 0 }); k = r.prev[k]; }
   return p;
 }
-function apFor(u, c) { return c <= 1e-6 ? 0 : Math.ceil(c / u.mov - 0.02); }
+function effMov(u) { return u.mov <= 0 ? 0 : Math.max(1, u.mov - (u.st.poison > 0 ? 2 : 0)); }
+function apFor(u, c) { const m = effMov(u); return c <= 1e-6 ? 0 : m <= 0 ? 99 : Math.ceil(c / m - 0.02); }
 
 // ---------------- Видимость и укрытия ----------------
 function blocksLOS(x, y) { const t = tile(x, y); return !!t && !!t.obj && !!OBJ[t.obj].los; }
@@ -243,7 +266,7 @@ function calcAttack(att, tgt, id, opt = {}) {
     if (cover) br.push([cover >= 40 ? 'Полное укрытие' : 'Половинное укрытие', -cover]);
     if (d <= 2) br.push(['В упор', 10]);
     if (d > 7) br.push(['Дальность', -Math.round((d - 7) * 4)]);
-    if (!A.ignoreDark && att.side !== 'coven' && !isLit(tpos.x, tpos.y)) br.push(['Цель во тьме', -15]);
+    if (!A.ignoreDark && att.side !== 'coven' && !hasTrait(att, 'darkvision') && !isLit(tpos.x, tpos.y)) br.push(['Цель во тьме', -15]);
   }
   if (att.side === 'order' && isLit(from.x, from.y)) br.push(['Свет веры', 8]);
   if (att.st.blessed > 0) br.push(['Благословение', 15]);
@@ -251,6 +274,8 @@ function calcAttack(att, tgt, id, opt = {}) {
   if (att.st.taunt && att.st.taunt !== tgt.id) br.push(['Вызов', -20]);
   if (att.st.concealed && id === 'backstab') br.push(['Из сокрытия', 20]);
   if (G.eclipse > 0 && att.side === 'order') br.push(['Ужас затмения', -10]);
+  if (att.st.poison > 0) br.push(['Яд', -10]);
+  if (att.st.blind > 0) br.push(['Ослеплён', -20]);
   { const ft = tile(from.x, from.y); if (ft && ft.burn > 0 && ft.burnSide === 'coven' && att.side === 'order') br.push(['Чёрное пламя', -10]); }
   if (opt.reaction) br.push(['Ответный выстрел', -10]);
   for (const p of defenseOf(tgt, tpos)) br.push(p);
@@ -267,7 +292,9 @@ function avgDmg(id) { const A = ABIL[id]; return (A.dmg[0] + A.dmg[1]) / 2; }
 // ---------------- Способности: проверка и цели ----------------
 function abilitiesOf(u) {
   const l = CLASSES[u.cls].abil.slice();
-  l.push('blood', 'brazier');
+  if (u.cls === 'catapult') return l;
+  if (!hasTrait(u, 'construct')) l.push('blood');
+  l.push('brazier');
   return l;
 }
 function meleeOk(a, b) {
@@ -290,6 +317,11 @@ function canUse(u, id) {
   if (id === 'blood') { if (u.bloodUsed) return { ok: false, why: 'Уже в этом ходу' }; if (u.hp <= 3) return { ok: false, why: 'Слишком мало ОЗ' }; if (u.ap >= MAX_AP + 1) return { ok: false, why: 'ОД на пределе' }; }
   if (id === 'vanish') { if (u.st.concealed) return { ok: false, why: 'Уже сокрыт' }; if (u.side === 'coven' && isLit(u.x, u.y)) return { ok: false, why: 'Нужна тьма' }; if (alive(foe(u.side)).some(e => !e.st.concealed && Math.max(Math.abs(e.x - u.x), Math.abs(e.y - u.y)) <= 2)) return { ok: false, why: 'Враг слишком близко (≤2 клеток)' }; }
   if (id === 'bulwark' && u.st.bulwark) return { ok: false, why: 'Уже активно' };
+  if (ABIL[id].needsLoad && !u.loaded) return { ok: false, why: 'Арбалет разряжен — нужна перезарядка' };
+  if (id === 'reload' && u.loaded) return { ok: false, why: 'Уже заряжен' };
+  if (id === 'quake' && !quakeVictims(u).length) return { ok: false, why: 'Рядом никого нет' };
+  if (id === 'flash' && !flashTargets(u).length) return { ok: false, why: 'Нет врагов в радиусе 3' };
+  if (id === 'lob' && !lobTiles(u).length) return { ok: false, why: 'Нет клеток в досягаемости' };
   if (id === 'brazier' && !adjBrazier(u)) return { ok: false, why: 'Нужна соседняя жаровня' };
   if (id === 'taunt' && u.tauntUsed) return { ok: false, why: 'Уже в этом ходу' };
   if (id === 'watch' && u.st.watch) return { ok: false, why: 'Уже активно' };
@@ -312,6 +344,20 @@ function targetsFor(u, id, from) {
   if (ty === 'brazier') { const b = adjBrazier(u, from); return b ? [b] : []; }
   return [];
 }
+function quakeVictims(u, from) { from = from || u; return alive().filter(v => v !== u && Math.max(Math.abs(v.x - from.x), Math.abs(v.y - from.y)) === 1); }
+function flashTargets(u, from) { from = from || u; return alive(foe(u.side)).filter(e => dist(from, e) <= 3.01 && hasLOS(from, e)); }
+// Катапульта бьёт навесом — стены не мешают, но есть мёртвая зона
+function lobTiles(u) {
+  const A = ABIL.lob; const res = [];
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    const d = Math.hypot(x - u.x, y - u.y);
+    if (d < A.minRange - 0.01 || d > A.range + 0.01) continue;
+    res.push({ x, y });
+  }
+  return res;
+}
+function lobLanding(c) { return lobArea(c.x, c.y)[Math.floor(Math.random() * 9)]; }
+function lobArea(cx, cy) { const r = []; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) r.push({ x: cx + dx, y: cy + dy }); return r; }
 function aoeTiles(u) {
   const A = ABIL.inferno; const res = [];
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
@@ -394,7 +440,17 @@ async function doAttack(att, tgt, id, opt = {}) {
   if (outcome === 'crit') dmg = Math.ceil(dmg * 1.5);
   if (outcome === 'graze') dmg = Math.max(1, Math.floor(dmg / 2));
   if (outcome === 'miss') dmg = 0;
-  const lethal = dmg >= tgt.hp;
+  // звериные рефлексы: 30% увернуться от любой дальней атаки
+  if (outcome !== 'miss' && !A.melee && hasTrait(tgt, 'evade') && Math.random() < 0.3) { outcome = 'evade'; dmg = 0; }
+  const notes = [];
+  if (dmg > 0) {
+    if (A.rage && att.rage) { dmg += att.rage; notes.push('ярость +' + att.rage); }
+    if (A.phys && tgt.armor && !A.armorPierce) { const d0 = dmg; dmg = Math.max(1, dmg - tgt.armor); if (dmg < d0) notes.push('броня −' + (d0 - dmg)); }
+    if (A.phys && A.armorPierce && tgt.armor) notes.push('пробил броню');
+    if (A.phys && !A.melee && hasTrait(tgt, 'undead')) { const d0 = dmg; dmg = Math.max(1, Math.floor(dmg / 2)); if (dmg < d0) notes.push('кость: −' + (d0 - dmg)); }
+  }
+  if (A.needsLoad) att.loaded = false;
+  const lethal = dmg >= tgt.hp && !(hasTrait(tgt, 'revive') && !tgt.revived);
   const fromConcealed = att.st.concealed;
   if (att.st.concealed) reveal(att);
   if (lethal) FX.cinematic(tgt.x, tgt.y);
@@ -416,7 +472,10 @@ async function doAttack(att, tgt, id, opt = {}) {
     att.anim.cast = 0;
   }
 
-  if (outcome === 'miss') {
+  if (outcome === 'evade') {
+    FX.float(tgt.x, tgt.y, 'УВЕРНУЛСЯ', '#c8f0ff', 1);
+    log(`${uName(att)} → ${uName(tgt)}: зверь <i>увернулся</i>.`, att.side);
+  } else if (outcome === 'miss') {
     FX.float(tgt.x, tgt.y, 'ПРОМАХ', '#9aa0b5', 0.9);
     log(`${uName(att)} → ${uName(tgt)}: <i>промах</i>&nbsp;<span class="nw">(${calc.hit}%)</span>.`, att.side);
     if (calc.ctile) await damageObject(calc.ctile.x, calc.ctile.y, irnd(1, 2));
@@ -425,9 +484,11 @@ async function doAttack(att, tgt, id, opt = {}) {
     if (outcome === 'crit') { FX.float(tgt.x, tgt.y, 'КРИТ!', '#ff5a3c', 1.3); FX.shake(9); }
     if (outcome === 'graze') FX.float(tgt.x, tgt.y, 'ЗАДЕЛ', '#d9c49a', 0.85);
     const word = outcome === 'crit' ? '<b class="crit">крит</b>' : outcome === 'graze' ? 'задевает' : 'попадание';
-    log(`${uName(att)} → ${uName(tgt)}: ${word},&nbsp;<span class="nw">−${dmg} (${calc.hit}%)</span>.`, att.side);
+    log(`${uName(att)} → ${uName(tgt)}: ${word},&nbsp;<span class="nw">−${dmg} (${calc.hit}%)</span>${notes.length ? ' <span class="t-dim">[' + notes.join(', ') + ']</span>' : ''}.`, att.side);
     gainRes(att.side, 1);
     await damageUnit(tgt, dmg, att, outcome);
+    if (!tgt.dead && A.poison) { tgt.st.poison = 3; FX.float(tgt.x, tgt.y, 'ОТРАВЛЕН', '#9dff6a', 0.9); }
+    if (!tgt.dead && A.bleed) { tgt.st.bleed = 3; FX.float(tgt.x, tgt.y, 'КРОВОТЕЧЕНИЕ', '#ff4d5e', 0.9); }
   }
   if (A.melee) await tween(0.16, f => { att.anim.lunge = 1 - f; });
   att.anim.lunge = 0;
@@ -444,12 +505,19 @@ async function damageUnit(u, dmg, src, kind) {
   if (kind !== 'fire') FX.shake(3 + dmg * 0.6);
   SFX.play('hit');
   if (u.st.concealed) reveal(u, 'ранен');
+  if (u.hp > 0 && hasTrait(u, 'rage') && u.rage < 4) { u.rage++; FX.float(u.x, u.y, 'ЯРОСТЬ ' + u.rage, '#ff7a3a', 0.9); }
+  if (u.hp <= 0 && hasTrait(u, 'revive') && !u.revived) {
+    u.revived = true; u.hp = Math.ceil(u.maxHp / 2);
+    FX.float(u.x, u.y, 'ВОССТАЛ', '#d9f0c0', 1.3); FX.burst('reveal', u.x, u.y, u.side); FX.shake(6);
+    log(`${uName(u)} рассыпается… и вновь собирает кости (${u.hp} ОЗ).`, u.side);
+    await wait(300); return;
+  }
   if (u.hp <= 0) await killUnit(u, src);
 }
 
 async function killUnit(u, src) {
   u.hp = 0; u.dead = true; u.anim.dying = 0.0001;
-  u.st = { bulwark: false, watch: 0, concealed: false, blessed: 0, cursed: 0, taunt: null };
+  u.st = { bulwark: false, watch: 0, concealed: false, blessed: 0, cursed: 0, taunt: null, poison: 0, bleed: 0, blind: 0 };
   FX.death(u);
   FX.shake(12);
   SFX.play('death');
@@ -491,7 +559,30 @@ async function useAbility(u, id, target) {
   try {
     switch (id) {
       case 'cleave': case 'shot': case 'pierce': case 'bolt': case 'backstab': case 'knife': case 'smite':
+      case 'heavybolt': case 'hack': case 'bite': case 'rend': case 'boneblade': case 'poisonarrow': case 'smash': case 'hook':
         await doAttack(u, target, id); break;
+      case 'reload':
+        u.loaded = true; FX.float(u.x, u.y, 'ЗАРЯЖЕН', '#e8d6a0', 0.9); SFX.play('shield');
+        log(`${uName(u)} взводит арбалет.`, u.side); await wait(300); break;
+      case 'shutter':
+        u.lanternOn = !u.lanternOn; SFX.play(u.lanternOn ? 'ignite' : 'douse');
+        FX.burst(u.lanternOn ? 'ignite' : 'douse', u.x, u.y, u.side);
+        log(`${uName(u)} ${u.lanternOn ? 'открывает' : 'прикрывает'} фонарь.`, u.side); refreshLight(); await wait(250); break;
+      case 'flash': {
+        const ts = flashTargets(u);
+        FX.explosion(u.x, u.y, 'order'); FX.shake(5); SFX.play('dawn');
+        for (const e of ts) { e.st.blind = 1; FX.float(e.x, e.y, 'ОСЛЕПЛЁН', '#fff2b0', 0.9); }
+        for (const e of alive()) if (e.st.concealed && dist(u, e) <= 3.01) reveal(e, 'вспышка фонаря');
+        log(`${uName(u)}: Вспышка! Ослеплено врагов: ${ts.length}.`, u.side); await wait(450); break;
+      }
+      case 'quake': {
+        u.anim.cast = 1; FX.explosion(u.x, u.y, 'coven'); FX.shake(16); SFX.play('boom');
+        log(`${uName(u)} бьёт оземь — Землетрясение!`, u.side);
+        for (const [dx, dy] of DIRS8) { const t = tile(u.x + dx, u.y + dy); if (t && t.obj && OBJ[t.obj].cover === 20) await damageObject(t.x, t.y, 4); }
+        for (const v of quakeVictims(u)) { const d = irnd(3, 5); if (v.side !== u.side) gainRes(u.side, 1); await damageUnit(v, d, v.side !== u.side ? u : null, 'hit'); }
+        u.anim.cast = 0; refreshLight(); await wait(300); break;
+      }
+      case 'lob': await castLob(u, target); break;
       case 'bulwark':
         u.st.bulwark = true; FX.burst('shield', u.x, u.y, u.side); SFX.play('shield');
         FX.float(u.x, u.y, 'БАСТИОН', '#e8d6a0', 1);
@@ -547,6 +638,31 @@ async function useAbility(u, id, target) {
   }
 }
 
+async function castLob(u, c) {
+  faceTo(u, c.x, c.y); u.anim.cast = 1;
+  const hit = lobLanding(c);
+  SFX.play('twang');
+  await FX.projectile(u, hit, 'boulder', u.side, null);
+  u.anim.cast = 0;
+  FX.explosion(hit.x, hit.y, 'coven'); FX.debris(hit.x, hit.y, '#', true); FX.shake(13); SFX.play('boom');
+  const off = hit.x === c.x && hit.y === c.y ? 'точно в цель' : 'отклонение ' + (hit.x - c.x) + ',' + (hit.y - c.y);
+  log(`${uName(u)}: Залп! Ядро — ${off}.`, u.side);
+  if (inb(hit.x, hit.y)) {
+    const t = tile(hit.x, hit.y);
+    if (t.obj && t.obj !== 'P') await damageObject(hit.x, hit.y, 6);
+    const v = unitAt(hit.x, hit.y);
+    if (v) {
+      let d = irnd(ABIL.lob.dmg[0], ABIL.lob.dmg[1]);
+      if (v.armor) d = Math.max(1, d - v.armor);
+      if (hasTrait(v, 'undead')) d = Math.max(1, Math.floor(d / 2));
+      if (hasTrait(v, 'evade') && Math.random() < 0.3) { FX.float(v.x, v.y, 'УВЕРНУЛСЯ', '#c8f0ff', 1); log(`${uName(v)} отскочил от ядра.`, v.side); }
+      else { if (v.side !== u.side) gainRes(u.side, 1); await damageUnit(v, d, v.side !== u.side ? u : null, 'hit'); }
+    }
+  }
+  refreshLight(); R.groundDirty = true;
+  await wait(300);
+  return hit;
+}
 async function castInferno(u, c) {
   faceTo(u, c.x, c.y); u.anim.cast = 1;
   SFX.play('magic');
@@ -629,6 +745,10 @@ async function startTurn(side) {
   if (G.gameId !== gid) return;
   // огонь жжёт стоящих
   for (const u of alive(side)) { const t = tile(u.x, u.y); if (t.burn > 0) await damageUnit(u, 2, null, 'fire'); }
+  for (const u of alive(side)) {
+    if (u.st.bleed > 0) { u.st.bleed--; FX.float(u.x, u.y, 'кровотечение', '#ff4d5e', 0.8, 18); await damageUnit(u, 2, null, 'bleed'); }
+    if (!u.dead && u.st.poison > 0) { u.st.poison--; FX.float(u.x, u.y, 'яд', '#9dff6a', 0.8, 18); await damageUnit(u, 1, null, 'poison'); }
+  }
   checkWin();
   if (G.winner) return;
   if (isAI(side)) {
@@ -648,7 +768,7 @@ function endTurn() {
   for (const u of alive(G.side)) if (u.st.concealed && alive(foe(u.side)).some(e => Math.max(Math.abs(e.x - u.x), Math.abs(e.y - u.y)) <= 1)) reveal(u, 'не удалось затаиться вплотную к врагу');
   for (const u of alive(G.side)) { u.guard = Math.min(u.ap, MAX_AP) * GUARD_PER_AP; if (u.guard) FX.float(u.x, u.y, 'Стойкость +' + u.guard, '#9fc4ff', 0.75); u.ap = 0; }
   // Вызов действует один ход врага
-  for (const u of alive(G.side)) u.st.taunt = null;
+  for (const u of alive(G.side)) { u.st.taunt = null; u.st.blind = 0; }
   G.sel = null; G.mode = null;
   const next = foe(G.side);
   if (next === G.first) G.round++;
