@@ -25,7 +25,8 @@ window.T = {
     return placed;
   },
   // Подменить случайность последовательностью чисел (потом вернуть).
-  rig(seq) { const orig = Math.random; let i = 0; Math.random = () => (i < seq.length ? seq[i++] : 0.5); return () => { Math.random = orig; }; },
-  rigConst(v) { const orig = Math.random; Math.random = () => v; return () => { Math.random = orig; }; },
+  // Подмена случайности. На время подмены отключаем бросок тьмы, чтобы последовательность не сбивалась.
+  rig(seq) { const orig = Math.random; let i = 0; GAME.G.noDarkMiss = true; Math.random = () => (i < seq.length ? seq[i++] : 0.5); return () => { Math.random = orig; GAME.G.noDarkMiss = false; }; },
+  rigConst(v) { const orig = Math.random; GAME.G.noDarkMiss = true; Math.random = () => v; return () => { Math.random = orig; GAME.G.noDarkMiss = false; }; },
   br(c, label) { const e = c.br.find(b => b[0] === label); return e ? e[1] : null; },
 };

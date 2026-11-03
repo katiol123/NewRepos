@@ -52,6 +52,9 @@ function unitName(side, cls) {
   return pool[(i - 1 + off) % pool.length];
 }
 const hasTrait = (u, t) => (CLASSES[u.cls].traits || []).includes(t);
+const DARK_MISS = 0.15;
+// Ночное зрение: герои Ковена и все, у кого есть черта darkvision (нежить, голем)
+const nightVision = u => hasTrait(u, 'darkvision') || (u.side === 'coven' && !!CLASSES[u.cls].faction);
 function makeUnit(side, cls, x, y) {
   const C = CLASSES[cls];
   return {
@@ -249,7 +252,7 @@ function defenseOf(t, pos) {
   if (t.st.bulwark) parts.push(['Бастион', -20]);
   if (t.st.blessed > 0) parts.push(['Благословение', -15]);
   if (t.st.cursed > 0) parts.push(['Проклятие', +15]);
-  if (t.side === 'coven' && !isLit(pos.x, pos.y)) parts.push(['Дети ночи', -10]);
+  if (t.side === 'order' && G.units.some(a => !a.dead && a !== t && a.side === 'order' && Math.max(Math.abs(a.x - pos.x), Math.abs(a.y - pos.y)) === 1)) parts.push(['Братство', -5]);
   return parts;
 }
 // att может быть «виртуальным» (для ИИ): from = позиция стрельбы
@@ -266,9 +269,7 @@ function calcAttack(att, tgt, id, opt = {}) {
     if (cover) br.push([cover >= 40 ? 'Полное укрытие' : 'Половинное укрытие', -cover]);
     if (d <= 2) br.push(['В упор', 10]);
     if (d > 7) br.push(['Дальность', -Math.round((d - 7) * 4)]);
-    if (!A.ignoreDark && att.side !== 'coven' && !hasTrait(att, 'darkvision') && !isLit(tpos.x, tpos.y)) br.push(['Цель во тьме', -15]);
   }
-  if (att.side === 'order' && isLit(from.x, from.y)) br.push(['Свет веры', 8]);
   if (att.st.blessed > 0) br.push(['Благословение', 15]);
   if (att.st.cursed > 0) br.push(['Проклятие', -15]);
   if (att.st.taunt && att.st.taunt !== tgt.id) br.push(['Вызов', -20]);
@@ -285,7 +286,10 @@ function calcAttack(att, tgt, id, opt = {}) {
   const exposed = !A.melee ? cover === 0 : meleeFlank(tpos, tgt.side, from);
   if (exposed) crit += A.flankCrit || (A.melee ? 10 : 20);
   crit = clamp(crit, 0, 100);
-  return { hit, crit, br, cover, ctile, exposed, dist: d };
+  // Тьма: единственный эффект — 15% промаха по цели во тьме, если у атакующего нет ночного зрения
+  const darkMiss = !nightVision(att) && !isLit(tpos.x, tpos.y) ? DARK_MISS : 0;
+  const eff = Math.round(hit * (1 - darkMiss));
+  return { hit, crit, br, cover, ctile, exposed, dist: d, darkMiss, eff };
 }
 function avgDmg(id) { const A = ABIL[id]; return (A.dmg[0] + A.dmg[1]) / 2; }
 
@@ -440,8 +444,9 @@ async function doAttack(att, tgt, id, opt = {}) {
   if (outcome === 'crit') dmg = Math.ceil(dmg * 1.5);
   if (outcome === 'graze') dmg = Math.max(1, Math.floor(dmg / 2));
   if (outcome === 'miss') dmg = 0;
+  if (outcome !== 'miss' && calc.darkMiss && !G.noDarkMiss && Math.random() < calc.darkMiss) { outcome = 'dark'; dmg = 0; }
   // звериные рефлексы: 30% увернуться от любой дальней атаки
-  if (outcome !== 'miss' && !A.melee && hasTrait(tgt, 'evade') && Math.random() < 0.3) { outcome = 'evade'; dmg = 0; }
+  if ((outcome === 'hit' || outcome === 'crit' || outcome === 'graze') && !A.melee && hasTrait(tgt, 'evade') && Math.random() < 0.3) { outcome = 'evade'; dmg = 0; }
   const notes = [];
   if (dmg > 0) {
     if (A.rage && att.rage) { dmg += att.rage; notes.push('ярость +' + att.rage); }
@@ -472,7 +477,10 @@ async function doAttack(att, tgt, id, opt = {}) {
     att.anim.cast = 0;
   }
 
-  if (outcome === 'evade') {
+  if (outcome === 'dark') {
+    FX.float(tgt.x, tgt.y, 'СКРЫТ ТЬМОЙ', '#9c8cd8', 1);
+    log(`${uName(att)} → ${uName(tgt)}: тьма скрыла цель — <i>промах</i>.`, att.side);
+  } else if (outcome === 'evade') {
     FX.float(tgt.x, tgt.y, 'УВЕРНУЛСЯ', '#c8f0ff', 1);
     log(`${uName(att)} → ${uName(tgt)}: зверь <i>увернулся</i>.`, att.side);
   } else if (outcome === 'miss') {

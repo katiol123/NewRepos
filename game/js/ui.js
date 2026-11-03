@@ -49,6 +49,13 @@ UI.init = function () {
   UI.drawMenuEmblems();
 };
 
+// Характер показываем только у бойцов, которыми управляет ИИ
+UI.charLine = function (u, cls) {
+  const ai = cls ? true : isAI(u.side);
+  if (!ai) return '';
+  const id = characterOf(u), C = CHARACTERS[id], notes = characterNotes(u);
+  return `<div class="char"><b>Характер: ${C.name}</b> — ${C.desc}${notes.length ? ' <span class="t-dim">(' + notes.join('; ') + ')</span>' : ''}</div>`;
+};
 UI.humanTurn = () => G.scene === 'battle' && !G.winner && !isAI(G.side) && !G.busy;
 
 // ---------------- Переходы ----------------
@@ -163,7 +170,7 @@ UI.renderArmy = function () {
     const hp = (side === 'coven' && C.hpCoven) || C.hp;
     card.insertAdjacentHTML('beforeend', `<div class="pc-t">${C.names[side]}</div><div class="pc-r">${C.merc ? 'наёмник' : 'герой фракции'} · ${C.role}</div>
       <div class="pc-s">ОЗ ${hp} · Шаг ${C.mov} · Броня ${C.armor || 0}</div><div class="pc-d">${C.desc}</div>`);
-    card.dataset.tip = `<b>${C.names[side]}</b><br>${C.desc}<br><span class="t-dim">Умения: ${C.abil.map(id => abName(id, side)).join(', ')}</span>${why ? `<br><span class="t-bad">${why}</span>` : ''}`;
+    card.dataset.tip = `<b>${C.names[side]}</b><br>${C.desc}<br><span class="t-dim">Умения: ${C.abil.map(id => abName(id, side)).join(', ')}</span>${why ? `<br><span class="t-bad">${why}</span>` : ''}${(UI.armyMode === 'spectator' || UI.armyMode !== side) ? UI.charLine(makeUnit(side, cls, 0, 0), true) : ''}`;
     card.onclick = () => { const w = UI.armyCanAdd(side, cls); if (w) { UI.toast(w); return; } UI.rosters[side].push(cls); SFX.play('select'); UI.renderArmy(); };
     pool.appendChild(card);
   }
@@ -282,6 +289,8 @@ UI.unitPanel = function () {
   if (u.st.taunt) st.push('<b class="s-red">Под Вызовом</b>');
   st.push(isLit(u.x, u.y) ? '<b class="s-gold">на свету</b>' : '<b class="s-vio">во тьме</b>');
   $('#uStatus').innerHTML = st.map(x => `<span class="chip">${x}</span>`).join(' · ');
+  $('#uChar').innerHTML = isAI(u.side) ? `Характер: <b>${CHARACTERS[characterOf(u)].name}</b>` : '';
+  $('#uChar').dataset.tip = isAI(u.side) ? UI.charLine(u) : '';
   const human = UI.humanTurn() && u.side === G.side;
   if (G.spectator) { $('#abilities').innerHTML = ''; return; }
   if (u.side !== G.side || isAI(u.side) || G.winner) { $('#abilities').innerHTML = `<div class="ab-wait">${isAI(G.side) ? 'Ход противника…' : 'Боец ждёт своего хода'}</div>`; return; }
@@ -354,7 +363,8 @@ UI.onMove = function (e) {
     const c = calcAttack(s, u, G.mode);
     const A = ABIL[G.mode];
     UI.tip(`<b>${abName(G.mode, s.side)}</b> → ${u.name}<div class="brk">${c.br.map(([k, v]) => `<div><span>${k}</span><b class="${v >= 0 ? 'pos' : 'neg'}">${v > 0 ? '+' : ''}${v}</b></div>`).join('')}</div>
-      <div class="sum">Попадание <b>${c.hit}%</b> · Крит <b>${c.crit}%</b>${c.exposed ? ` <span class="t-bad">(${A.melee ? 'удар в спину' : 'фланг'})</span>` : ''}</div>
+      ${c.darkMiss ? `<div class="t-dim">Цель во тьме: ещё ${Math.round(c.darkMiss * 100)}% шанс промаха (нет ночного зрения)</div>` : ''}
+      <div class="sum">Попадание <b>${c.eff}%</b> · Крит <b>${c.crit}%</b>${c.exposed ? ` <span class="t-bad">(${A.melee ? 'удар в спину' : 'фланг'})</span>` : ''}</div>
       <div class="t-dim">Урон ${A.dmg[0]}–${A.dmg[1]} · задеть (½ урона): ещё ${Math.min(10, 100 - c.hit)}%</div>`, e.clientX, e.clientY);
   } else if (u && s && G.mode && !R.targetCache(s, G.mode).includes(u) && UI.whyNot(s, G.mode, u)) {
     UI.tip(`<b>${abName(G.mode, s.side)}</b> → ${u.name}<br><span class="t-bad">${UI.whyNot(s, G.mode, u)}</span>`, e.clientX, e.clientY);
@@ -374,7 +384,7 @@ UI.unitTip = function (u) {
   if (u.st.watch) st.push('Бдение'); if (u.st.bulwark) st.push('Бастион'); if (u.st.concealed) st.push('Сокрыт');
   if (u.st.blessed > 0) st.push('Благословлён'); if (u.st.cursed > 0) st.push('Проклят'); if (u.guard) st.push('Стойкость +' + u.guard);
   if (u.st.poison > 0) st.push('Яд ' + u.st.poison); if (u.st.bleed > 0) st.push('Кровотечение ' + u.st.bleed); if (u.st.blind > 0) st.push('Ослеплён'); if (u.rage) st.push('Ярость +' + u.rage);
-  return `<b class="c-${u.side}">${u.name}</b><br><span class="t-dim">${u.title} · ${CLASSES[u.cls].role}</span><br>ОЗ ${u.hp}/${u.maxHp} · Мет. ${u.aim} · Защ. ${u.def}${u.armor ? ' · Броня ' + u.armor : ''}${st.length ? '<br>' + st.join(', ') : ''}<br><span class="t-dim">${CLASSES[u.cls].desc}</span>`;
+  return `<b class="c-${u.side}">${u.name}</b><br><span class="t-dim">${u.title} · ${CLASSES[u.cls].role}</span><br>ОЗ ${u.hp}/${u.maxHp} · Мет. ${u.aim} · Защ. ${u.def}${u.armor ? ' · Броня ' + u.armor : ''}${st.length ? '<br>' + st.join(', ') : ''}<br><span class="t-dim">${CLASSES[u.cls].desc}</span>${UI.charLine(u)}`;
 };
 
 UI.whyNot = function (s, id, t) {

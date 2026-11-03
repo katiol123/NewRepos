@@ -318,3 +318,7 @@ body.spectating #hint { display: none; }
 body.big-roster .r-unit canvas { width: 26px; height: 26px; } body.big-roster .r-name { font-size: 12.5px; } body.big-roster #roster { gap: 4px; } body.big-roster .r-col { gap: 2px; }
 .pc-d { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .pcard canvas { width: 64px; height: 64px; }
+
+#uChar { font-size: 13px; color: #c9b8e8; font-style: italic; cursor: help; }
+#uChar:empty { display: none; }
+#tip .char { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--line); color: #d9c9f2; font-size: 13.5px; }

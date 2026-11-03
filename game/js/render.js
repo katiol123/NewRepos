@@ -1282,7 +1282,7 @@ R.drawShotPreview = function (c, u, P, left, time) {
   const placed = [];
   for (const r of R._sp.rows) {
     const b = iso(r.e.x, r.e.y);
-    const h = r.calc.hit;
+    const h = r.calc.eff;
     const col = !r.enough ? '#8a8494' : h >= 70 ? '#7dff9e' : h >= 40 ? '#f2c75c' : '#ff6a5c';
     // тонкая линия
     c.save();
@@ -1393,7 +1393,7 @@ R.drawTargetHud = function (c, time) {
   c.save(); c.translate(p.x, p.y - 90);
   poly(c, [-30, -16, 30, -16, 34, 0, 30, 16, -30, 16, -34, 0], 'rgba(10,6,12,0.85)', '#ff5a4a', 1.2);
   c.font = '700 20px Cinzel, Georgia, serif'; c.textAlign = 'center'; c.fillStyle = '#ffe6d0';
-  c.fillText(calc.hit + '%', 0, 2);
+  c.fillText(calc.eff + '%', 0, 2);
   c.font = '600 9px "Cormorant Garamond", Georgia, serif'; c.fillStyle = '#ffb08a';
   c.fillText('крит ' + calc.crit + '%', 0, 12);
   c.restore();

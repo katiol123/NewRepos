@@ -63,11 +63,20 @@ const TESTS = [
     if (e.hp === e.maxHp) return 'ответный выстрел не нанёс урона';
     return null;
   }],
-  ['Искра / Теневой разряд: не страдает от тьмы', () => {
-    const [my, ma, t, cm] = T.setup({ units: [['order', 'mystic', 2, 2], ['order', 'marksman', 2, 3], ['coven', 'bastion', 6, 2], ['coven', 'marksman', 6, 6]] });
-    if (T.br(calcAttack(my, t, 'bolt'), 'Цель во тьме') !== null) return 'магия получила штраф тьмы';
-    if (T.br(calcAttack(ma, t, 'shot'), 'Цель во тьме') !== -15) return 'обычный выстрел Ордена во тьму без −15';
-    if (T.br(calcAttack(cm, ma, 'shot'), 'Цель во тьме') !== null) return 'Ковен получил штраф тьмы';
+  ['Тьма: единственный эффект — 15% промаха по цели во тьме без ночного зрения', async () => {
+    const [ma, t, cm, sk, gl] = T.setup({ units: [['order', 'marksman', 2, 2], ['coven', 'bastion', 6, 2], ['coven', 'marksman', 6, 6], ['order', 'skelarch', 2, 6], ['order', 'golem', 3, 9]], objs: [['B', 12, 12]] });
+    const c = calcAttack(ma, t, 'shot');
+    if (c.darkMiss !== 0.15) return 'Орден по цели во тьме: шанс промаха ' + c.darkMiss;
+    if (c.br.some(b => /тьм|свет/i.test(b[0]))) return 'в расчёте остались другие модификаторы тьмы/света: ' + JSON.stringify(c.br);
+    if (calcAttack(cm, ma, 'shot').darkMiss !== 0) return 'герой Ковена страдает от тьмы';
+    if (calcAttack(sk, t, 'poisonarrow').darkMiss !== 0) return 'нежить страдает от тьмы';
+    if (calcAttack(gl, t, 'smash', { from: { x: 5, y: 2 } }).darkMiss !== 0) return 'голем страдает от тьмы';
+    t.x = 11; t.y = 12; refreshLight();
+    if (calcAttack(ma, t, 'shot').darkMiss !== 0) return 'промах тьмы по цели на свету';
+    // статистика: доля «скрыт тьмой» среди попавших бросков ≈ 15%
+    t.x = 6; t.y = 2; refreshLight(); let dark = 0, landed = 0;
+    for (let i = 0; i < 300; i++) { t.hp = 99; t.dead = false; const o = await doAttack(ma, t, 'shot'); if (o === 'dark') dark++; if (o !== 'miss') landed++; }
+    const r = dark / landed; if (r < 0.08 || r > 0.23) return 'доля промахов из-за тьмы ' + r.toFixed(2);
     return null;
   }],
   ['Огненный вал: бьёт и своих, крушит половинные укрытия, поджигает, огонь Ордена светит', async () => {
@@ -232,12 +241,11 @@ const TESTS = [
     if (t.maxHp - t.hp !== Math.floor(ABIL.shot.dmg[1] / 2)) return 'урон ' + (t.maxHp - t.hp);
     return null;
   }],
-  ['Свет веры +8 / Дети ночи +10 / стрельба во тьму −15', () => {
-    const [om, cm, ot] = T.setup({ units: [['order', 'marksman', 5, 6], ['coven', 'marksman', 5, 12], ['order', 'bastion', 13, 13]], objs: [['B', 5, 5]] });
-    const c = calcAttack(om, cm, 'shot');
-    if (T.br(c, 'Свет веры') !== 8) return 'нет +8 на свету';
-    if (T.br(c, 'Дети ночи') !== -10) return 'нет +10 к защите Ковена во тьме';
-    if (T.br(c, 'Цель во тьме') !== -15) return 'нет −15 по цели во тьме';
+  ['Братство: Орден +5 к защите рядом с союзником', () => {
+    const [om, ob, cm] = T.setup({ units: [['order', 'marksman', 5, 6], ['order', 'bastion', 10, 10], ['coven', 'marksman', 5, 12]] });
+    if (T.br(calcAttack(cm, om, 'shot'), 'Братство') !== null) return 'бонус без союзника рядом';
+    ob.x = 6; ob.y = 6;
+    if (T.br(calcAttack(cm, om, 'shot'), 'Братство') !== -5) return 'нет +5 рядом с союзником';
     return null;
   }],
   ['Рассвет: всё освещено, скрытые раскрыты, лечение 2, перезарядка 4 раунда', async () => {
@@ -369,7 +377,7 @@ const TESTS = [
     let out; try { out = await doAttack(a, s, 'shot'); } finally { undo2(); }
     const lost = s.maxHp - s.hp;
     if (out === 'hit' && lost !== Math.floor(ABIL.shot.dmg[1] / 2)) return 'урон ' + lost + ' вместо половины';
-    if (T.br(calcAttack(s, t, 'poisonarrow'), 'Цель во тьме') !== null) return 'нежить получает штраф тьмы';
+    if (calcAttack(s, t, 'poisonarrow').darkMiss !== 0) return 'нежить страдает от тьмы';
     return null;
   }],
   ['Скелет-лучник: яд 3 хода — −2 шага, −10 меткости, −1 ОЗ в начале хода', async () => {
@@ -393,7 +401,7 @@ const TESTS = [
     if (a.hp === a.maxHp) return 'союзник рядом не задет (обещано «и своих»)';
     if (f.hp !== f.maxHp) return 'задет дальний враг';
     if (GAME.G.map[4][5].obj) return 'соседнее надгробие уцелело';
-    if (T.br(calcAttack(g, f, 'smash', { from: { x: 7, y: 8 } }), 'Цель во тьме') !== null) return 'штраф тьмы';
+    if (calcAttack(g, f, 'smash', { from: { x: 7, y: 8 } }).darkMiss !== 0) return 'голем страдает от тьмы';
     return null;
   }],
   ['Катапульта: не ходит, стоит ресурс, ядро равновероятно падает в одну из 9 клеток', async () => {
@@ -432,6 +440,60 @@ const TESTS = [
     const cells = new Set(G.units.map(u => u.x + ',' + u.y)); if (cells.size !== 12) return 'бойцы стоят друг на друге';
     for (const u of G.units) if (!walkable(u.x, u.y)) return 'боец в стене: ' + u.name;
     GAME.newGame('order', { order: DEFAULT_ROSTER, coven: DEFAULT_ROSTER });
+    return null;
+  }],
+
+  // ---------------- Характеры ИИ ----------------
+  ['Характер выводится из показателей, а не из класса (новый класс попадает под модель)', () => {
+    T.setup({ units: [['order', 'bastion', 2, 2]] });
+    // временный «новый» класс: быстрый ближник с малым запасом ОЗ — должен стать стайным хищником
+    CLASSES.__test = { merc: true, hp: 9, mov: 7, aim: 60, def: 0, crit: 5, armor: 0, role: 'тест', names: { order: 'Тест', coven: 'Тест' }, abil: ['bite'], traits: [], desc: '' };
+    MERC_NAMES.__test = ['Тестовый'];
+    let r = null;
+    try {
+      const u = makeUnit('order', '__test', 0, 0);
+      if (characterOf(u) !== 'pack') r = 'быстрый ближник получил ' + characterOf(u);
+      CLASSES.__test.hp = 18; CLASSES.__test.mov = 3;
+      const w = makeUnit('order', '__test', 0, 0);
+      if (!r && characterOf(w) !== 'wall') r = 'крепкий медленный ближник получил ' + characterOf(w);
+      CLASSES.__test.abil = ['shot']; CLASSES.__test.hp = 10;
+      const a = makeUnit('order', '__test', 0, 0);
+      if (!r && characterOf(a) !== 'patient') r = 'стрелок получил ' + characterOf(a);
+    } finally { delete CLASSES.__test; delete MERC_NAMES.__test; }
+    return r;
+  }],
+  ['Живая стена встаёт между врагом и самым израненным союзником (по текущим ОЗ)', () => {
+    const [b, weak, strong, e] = T.setup({ units: [['order', 'bastion', 7, 3], ['order', 'marksman', 3, 3], ['order', 'priest', 11, 3], ['coven', 'marksman', 3, 12]] });
+    weak.hp = 2;
+    const between = AI.pos(b, 3, 5), aside = AI.pos(b, 11, 5);
+    if (!(between > aside)) return `клетка у израненного (${between.toFixed(1)}) не лучше клетки у здорового (${aside.toFixed(1)})`;
+    weak.hp = weak.maxHp; strong.hp = 2;
+    if (!(AI.pos(b, 11, 5) > AI.pos(b, 3, 5))) return 'не переключился на нового израненного';
+    return null;
+  }],
+  ['Стайный хищник не рвётся вперёд союзников и не бьёт одиночную цель', () => {
+    const [w, ally, e1, e2] = T.setup({ units: [['order', 'wolf', 4, 10], ['order', 'bastion', 4, 9], ['coven', 'marksman', 4, 3], ['coven', 'priest', 6, 3]] });
+    const ahead = AI.pos(w, 4, 5), withAlly = AI.pos(w, 5, 9);
+    if (!(withAlly > ahead)) return `клетка впереди всех (${ahead.toFixed(1)}) лучше клетки у союзника (${withAlly.toFixed(1)})`;
+    w.x = 4; w.y = 4; const solo = AI.bestAction(w, { x: 4, y: 4 }, 3);
+    ally.x = 5; ally.y = 3; const pinned = AI.bestAction(w, { x: 4, y: 4 }, 3);
+    if (!(pinned && solo && pinned.val > solo.val)) return 'атака по цели в клещах не ценнее атаки по одиночке';
+    return null;
+  }],
+  ['Угроза ответного хода: хрупкий боец избегает клетки под огнём нескольких врагов', () => {
+    const [m, e1, e2, e3] = T.setup({ units: [['order', 'mystic', 2, 8], ['coven', 'marksman', 8, 2], ['coven', 'mystic', 9, 4], ['coven', 'shade', 8, 5]] });
+    const open = AI.threatAt(m, { x: 6, y: 6 }), far = AI.threatAt(m, { x: 0, y: 14 });
+    if (!(open.exp > far.exp)) return 'угроза у врагов не выше угрозы вдали';
+    if (!(AI.pos(m, 0, 14) > AI.pos(m, 6, 6))) return 'хрупкий выбирает клетку под огнём';
+    return null;
+  }],
+  ['Характер в карточке виден только у бойцов ИИ', () => {
+    T.setup({ units: [['order', 'wolf', 2, 2], ['coven', 'wolf', 8, 8]] });
+    const o = GAME.G.units.find(u => u.side === 'order' && u.cls === 'wolf'), c = GAME.G.units.find(u => u.side === 'coven' && u.cls === 'wolf');
+    GAME.G.control = { order: 'human', coven: 'ai' };
+    if (UI.charLine(o)) return 'у бойца игрока показан характер';
+    if (!UI.charLine(c).includes('Характер')) return 'у бойца ИИ нет характера';
+    if (!UI.unitTip(c).includes('Характер') || UI.unitTip(o).includes('Характер')) return 'подсказка показывает характер не тем';
     return null;
   }],
 ];
