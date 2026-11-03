@@ -1052,7 +1052,9 @@ R.drawBurnGround = function (c, time) {
 R.drawBurnFlames = function (c, time) {
   c.save();
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-    const t = G.map[y][x]; if (t.burn <= 0 || t.obj) continue;
+    const t = G.map[y][x];
+    if (t.torch > 0 && !t.obj) { const p = iso(x, y); c.strokeStyle = '#4a3622'; c.lineWidth = 2; c.beginPath(); c.moveTo(p.x, p.y + 2); c.lineTo(p.x + 2, p.y - 14); c.stroke(); c.globalCompositeOperation = 'lighter'; ell(c, p.x + 2, p.y - 18 + Math.sin(time * 9 + x) , 3, 5, 'rgba(255,190,90,0.85)'); ell(c, p.x + 2, p.y - 18, 7, 9, 'rgba(255,150,60,0.18)'); c.globalCompositeOperation = 'source-over'; }
+    if (t.burn <= 0 || t.obj) continue;
     const p = iso(x, y); const ord = t.burnSide === 'order';
     c.globalCompositeOperation = ord ? 'lighter' : 'source-over';
     for (let i = 0; i < 4; i++) {
@@ -1099,6 +1101,11 @@ R.drawUnitWorld = function (c, u, time) {
   }
   // тень
   ell(c, 0, 0, 13, 5.5, 'rgba(0,0,0,0.45)');
+  // присесть за низким укрытием (когда стоит на месте)
+  const halfCover = !u.dead && DIRS4.some(([dx, dy]) => coverValueAt(u.x + dx, u.y + dy, u.side) === 20) && !DIRS4.some(([dx, dy]) => coverValueAt(u.x + dx, u.y + dy, u.side) === 40);
+  const still = u.rx === u.x && u.ry === u.y && !u.anim.lunge && !u.anim.cast && u.mov > 0;
+  u.anim.crouch = (u.anim.crouch || 0) + (((halfCover && still) ? 1 : 0) - (u.anim.crouch || 0)) * 0.12;
+  if (u.anim.crouch > 0.01) c.scale(1 + 0.04 * u.anim.crouch, 1 - 0.2 * u.anim.crouch);
   // освещённость
   let alpha = 1;
   if (dying > 0) { alpha = Math.max(0, 1 - dying); }
@@ -1329,6 +1336,20 @@ R.drawTargeting = function (c, u, time) {
   const rr = (A.range || 5) * TW / Math.SQRT2;
   c.beginPath(); c.arc(0, 0, rr, 0, 7); c.stroke(); c.setLineDash([]);
   c.restore();
+  if (ty === 'torch') {
+    const tiles = R.torchCache(u);
+    c.save(); for (const t of tiles) { const p = iso(t.x, t.y); diamond(c, p.x, p.y, 0.9); c.fillStyle = 'rgba(255,210,120,0.06)'; c.fill(); } c.restore();
+    const h = G.hover;
+    if (h && tiles.some(t => t.x === h.x && t.y === h.y)) {
+      c.save(); c.globalCompositeOperation = 'lighter';
+      for (let y = h.y - 3; y <= h.y + 3; y++) for (let x = h.x - 3; x <= h.x + 3; x++) {
+        if (!inb(x, y) || Math.hypot(x - h.x, y - h.y) > 2.2) continue;
+        const p = iso(x, y); diamond(c, p.x, p.y, 0.92); c.fillStyle = 'rgba(255,200,110,0.18)'; c.fill();
+      }
+      c.restore();
+    }
+    return;
+  }
   if (ty === 'lob') {
     const tiles = R.lobCache(u);
     c.save(); for (const t of tiles) { const p = iso(t.x, t.y); diamond(c, p.x, p.y, 0.9); c.fillStyle = 'rgba(255,170,90,0.05)'; c.fill(); } c.restore();
@@ -1373,6 +1394,7 @@ R.drawTargeting = function (c, u, time) {
   }
 };
 R._ac = null; R._tc = null;
+R.torchCache = function (u) { const key = 'tor' + u.id + ':' + u.x + ':' + u.y + ':' + G.turnCount; if (!R._toc || R._toc.key !== key) R._toc = { key, t: torchTiles(u) }; return R._toc.t; };
 R.lobCache = function (u) { const key = 'lob' + u.id + ':' + u.x + ':' + u.y; if (!R._lc || R._lc.key !== key) R._lc = { key, t: lobTiles(u) }; return R._lc.t; };
 R.aoeCache = function (u) { const key = u.id + ':' + u.x + ':' + u.y + ':' + G.turnCount + ':' + G.units.filter(v => !v.dead).length; if (!R._ac || R._ac.key !== key) R._ac = { key, t: aoeTiles(u) }; return R._ac.t; };
 R.targetCache = function (u, id) { const key = u.id + ':' + id + ':' + u.x + ':' + u.y + ':' + u.ap + ':' + G.turnCount + ':' + G.units.map(v => v.dead ? 'd' : v.x + ',' + v.y + (v.st.concealed ? 'c' : '')).join('|'); if (!R._tc || R._tc.key !== key) R._tc = { key, t: targetsFor(u, id) }; return R._tc.t; };

@@ -3,8 +3,9 @@
 //  Таймеры, эффекты, частицы, звук
 // ============================================================
 const Timers = [];
-function wait(ms) { return new Promise(r => Timers.push({ t: 0, dur: ms / 1000, r })); }
-function tween(dur, fn) { return new Promise(r => Timers.push({ t: 0, dur, r, fn })); }
+// Быстрый режим симуляции (G.instant): без анимаций и ожиданий — для расчёта баланса
+function wait(ms) { if (G.instant) return Promise.resolve(); return new Promise(r => Timers.push({ t: 0, dur: ms / 1000, r })); }
+function tween(dur, fn) { if (G.instant) { if (fn) fn(1); return Promise.resolve(); } return new Promise(r => Timers.push({ t: 0, dur, r, fn })); }
 function tickTimers(dt) {
   for (let i = Timers.length - 1; i >= 0; i--) {
     const T = Timers[i]; T.t += dt;
@@ -16,10 +17,12 @@ function tickTimers(dt) {
 
 const FX = { parts: [], texts: [], projs: [], rings: [], slowmo: 0 };
 FX.clear = function () { FX.parts.length = 0; FX.texts.length = 0; FX.projs.length = 0; FX.rings.length = 0; };
-FX.spawn = function (p) { if (FX.parts.length < (R.low ? 500 : 1800)) { p.age = 0; FX.parts.push(p); } };
+FX.spawn = function (p) {
+  if (G.instant) return; if (FX.parts.length < (R.low ? 500 : 1800)) { p.age = 0; FX.parts.push(p); } };
 const W = (x, y) => iso(x, y);
 
 FX.float = function (x, y, text, color, scale = 1, dy = 0) {
+  if (G.instant) return;
   const p = W(x, y);
   // не накладывать тексты
   let off = 0; for (const t of FX.texts) if (Math.abs(t.x - p.x) < 30 && t.age < 0.5) off += 17;
@@ -183,6 +186,7 @@ const PROJ_COL = {
   coven: { arrow: '#b48cff', orb: '#a77bff', fireball: '#8a4dff', beam: '#7dffd0', heal: '#7dffb8', hex: '#c79bff', knife: '#d9fff2' },
 };
 FX.projectile = function (from, to, type, side, tgtUnit) {
+  if (G.instant) return Promise.resolve();
   const a = iso(from.x, from.y), b = iso(to.x, to.y);
   const col = PROJ_COL[side][type] || '#ffffff';
   const ay = a.y - 30, by = b.y - (tgtUnit ? 26 : 4);

@@ -99,6 +99,7 @@ UI.pause = function (on) { $('#pause').classList.toggle('hidden', !on); };
 
 // ---------------- Баннер хода ----------------
 UI.banner = function (side, extra) {
+  if (G.instant) return Promise.resolve();
   return new Promise(res => {
     const b = $('#banner'); const F = FACTIONS[side];
     const who = G.spectator ? `Ход ${F.gen}` : isAI(side) ? `Ход врага — ${F.short}` : `Ваш ход — ${F.short}`;
@@ -170,7 +171,7 @@ UI.renderArmy = function () {
     const hp = (side === 'coven' && C.hpCoven) || C.hp;
     card.insertAdjacentHTML('beforeend', `<div class="pc-t">${C.names[side]}</div><div class="pc-r">${C.merc ? 'наёмник' : 'герой фракции'} · ${C.role}</div>
       <div class="pc-s">ОЗ ${hp} · Шаг ${C.mov} · Броня ${C.armor || 0}</div><div class="pc-d">${C.desc}</div>`);
-    card.dataset.tip = `<b>${C.names[side]}</b><br>${C.desc}<br><span class="t-dim">Умения: ${C.abil.map(id => abName(id, side)).join(', ')}</span>${why ? `<br><span class="t-bad">${why}</span>` : ''}${(UI.armyMode === 'spectator' || UI.armyMode !== side) ? UI.charLine(makeUnit(side, cls, 0, 0), true) : ''}`;
+    card.dataset.tip = `<b>${C.names[side]}</b><br>${C.desc}<br><span class="t-dim">Умения: ${(side === 'order' && C.orderExtra ? C.abil.concat(C.orderExtra) : C.abil).map(id => abName(id, side)).join(', ')}</span>${why ? `<br><span class="t-bad">${why}</span>` : ''}${(UI.armyMode === 'spectator' || UI.armyMode !== side) ? UI.charLine(makeUnit(side, cls, 0, 0), true) : ''}`;
     card.onclick = () => { const w = UI.armyCanAdd(side, cls); if (w) { UI.toast(w); return; } UI.rosters[side].push(cls); SFX.play('select'); UI.renderArmy(); };
     pool.appendChild(card);
   }
@@ -415,6 +416,11 @@ UI.onDown = function (e) {
   const s = G.sel; const u = unitAt(t.x, t.y);
   if (G.mode && s) {
     const ty = abType(G.mode, s.side);
+    if (ty === 'torch') {
+      if (R.torchCache(s).some(q => q.x === t.x && q.y === t.y)) useAbility(s, G.mode, t);
+      else { G.mode = null; UI.refresh(); }
+      return;
+    }
     if (ty === 'lob') {
       if (R.lobCache(s).some(q => q.x === t.x && q.y === t.y)) useAbility(s, G.mode, t);
       else { G.mode = null; UI.refresh(); }

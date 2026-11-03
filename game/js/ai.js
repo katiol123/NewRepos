@@ -206,6 +206,11 @@ AI.bestAction = function (u, P, ap) {
         if (A.poison) { if (e.st.poison > 0) v -= 2; if (e.mov >= 6) v += 1.5; }
         if (A.bleed && ep.sturdy) v += 1;
         if (A.armorPierce && e.armor) v += e.armor * 0.8;
+        if (A.flare) {   // осветить врага выгодно, если он во тьме и рядом есть наши без ночного зрения
+          const blindAllies = alive(u.side).filter(a => a !== u && !nightVision(a) && Math.hypot(a.x - e.x, a.y - e.y) <= 8).length;
+          v += (!isLit(e.x, e.y) ? 0.6 + Math.min(3, blindAllies) * 0.5 : -1) - A.res * 0.6;
+          if (e.st.concealed) v += 1;
+        }
         if (id === 'pierce' && ap < 3) continue;
         consider(v, id, e);
       }
@@ -303,6 +308,20 @@ AI.bestAction = function (u, P, ap) {
         // ресурс нужен лечению — стрелять только если выгодно
         const reserve = teamHurt && alive(u.side).some(a => profileOf(a).healer) && G.res[u.side] - ABIL.lob.res < 2 ? 1.2 : 0;
         consider(v * 1.6 - 0.6 - reserve, id, { x: e.x, y: e.y });
+      }
+    } else if (id === 'torch') {
+      // факел окупается, если осветит своих героев (доход) и врагов без защиты тьмы
+      const heroes = alive(u.side).filter(a => CLASSES[a.cls].faction);
+      const foes = alive(foe(u.side)).filter(e => !e.st.concealed);
+      const cand = [];
+      for (const a of heroes) cand.push({ x: a.x, y: a.y });
+      for (const e of foes) cand.push({ x: e.x, y: e.y });
+      for (const c of cand) {
+        if (!inb(c.x, c.y) || blocksLOS(c.x, c.y) || Math.hypot(c.x - P.x, c.y - P.y) > ABIL.torch.range || !hasLOS(P, c)) continue;
+        let v = -1.6;  // цена: 1 Вера и 1 ОД
+        for (const a of heroes) { const pos = a === u ? P : a; if (!isLit(pos.x, pos.y) && Math.hypot(pos.x - c.x, pos.y - c.y) <= 2) v += 1.2; }
+        for (const e of foes) if (!isLit(e.x, e.y) && Math.hypot(e.x - c.x, e.y - c.y) <= 2) v += 0.7 + (e.st.concealed ? 1 : 0);
+        if (v > 0) consider(v, id, { x: c.x, y: c.y });
       }
     } else if (id === 'brazier') {
       const b = adjBrazier(virt, P); if (!b) continue;

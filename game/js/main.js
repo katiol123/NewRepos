@@ -31,5 +31,13 @@
   }
   requestAnimationFrame(loop);
   // хук для автотестов
-  window.GAME = { G, R, UI, AI, FX, start: m => UI.startGame(m), newGame, startTurn, endTurn, useAbility, moveUnit, reach, pathFrom, calcAttack, targetsFor, canUse, abilitiesOf, useUlt };
+  // Быстрая симуляция партии ИИ против ИИ без анимаций (для баланса)
+  const simulate = (rosters, first) => new Promise(res => {
+    G.instant = true; G.forceFirst = first || null;
+    newGame('spectator', rosters); G.scene = 'battle';
+    G.onEnd = () => res({ w: G.winner, r: G.round, why: G.winReason, econ: G.econ,
+      units: G.units.map(u => ({ s: u.side, c: u.cls, d: u.dmgDone || 0, k: u.kills, dead: u.dead })) });
+    startTurn(G.first);
+  });
+  window.GAME = { simulate, G, R, UI, AI, FX, start: m => UI.startGame(m), newGame, startTurn, endTurn, useAbility, moveUnit, reach, pathFrom, calcAttack, targetsFor, canUse, abilitiesOf, useUlt };
 })();

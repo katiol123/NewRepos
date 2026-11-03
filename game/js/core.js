@@ -117,6 +117,7 @@ function lightSources(forRender) {
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const t = G.map[y][x];
     if (t.obj === 'B' && t.lit && G.eclipse <= 0) L.push({ x, y, r: 3.6, i: 1.25, kind: 'brazier' });
+    if (t.torch > 0 && G.eclipse <= 0) L.push({ x, y, r: 2.9, i: 1.1, kind: 'fire' });
     if (t.burn > 0) {
       if (t.burnSide === 'order') { if (G.eclipse <= 0) L.push({ x, y, r: 2.2, i: 0.9, kind: 'fire' }); }
       else L.push({ x, y, r: 1.9, i: -1.0, kind: 'void' });
@@ -288,7 +289,7 @@ function calcAttack(att, tgt, id, opt = {}) {
   if (exposed) crit += A.flankCrit || (A.melee ? 10 : 20);
   crit = clamp(crit, 0, 100);
   // Тьма: единственный эффект — 15% промаха по цели во тьме, если у атакующего нет ночного зрения
-  const darkMiss = !nightVision(att) && !isLit(tpos.x, tpos.y) ? DARK_MISS : 0;
+  const darkMiss = !nightVision(att) && !A.flare && !isLit(tpos.x, tpos.y) ? DARK_MISS : 0;
   const eff = Math.round(hit * (1 - darkMiss));
   return { hit, crit, br, cover, ctile, exposed, dist: d, darkMiss, eff };
 }
@@ -298,6 +299,8 @@ function avgDmg(id) { const A = ABIL[id]; return (A.dmg[0] + A.dmg[1]) / 2; }
 function abilitiesOf(u) {
   const l = CLASSES[u.cls].abil.slice();
   if (u.cls === 'catapult') return l;
+  // особые умения героев Ордена за Веру
+  if (u.side === 'order' && CLASSES[u.cls].orderExtra) l.splice(CLASSES[u.cls].abil.length, 0, ...CLASSES[u.cls].orderExtra);
   if (!hasTrait(u, 'construct')) l.push('blood');
   l.push('brazier');
   return l;
@@ -326,6 +329,7 @@ function canUse(u, id) {
   if (id === 'reload' && u.loaded) return { ok: false, why: 'Уже заряжен' };
   if (id === 'quake' && !quakeVictims(u).length) return { ok: false, why: 'Рядом никого нет' };
   if (id === 'flash' && !flashTargets(u).length) return { ok: false, why: 'Нет врагов в радиусе 3' };
+  if (id === 'torch' && !torchTiles(u).length) return { ok: false, why: 'Некуда бросить' };
   if (id === 'lob' && !lobTiles(u).length) return { ok: false, why: 'Нет клеток в досягаемости' };
   if (id === 'brazier' && !adjBrazier(u)) return { ok: false, why: 'Нужна соседняя жаровня' };
   if (id === 'taunt' && u.tauntUsed) return { ok: false, why: 'Уже в этом ходу' };
@@ -362,6 +366,15 @@ function lobTiles(u) {
   return res;
 }
 function lobLanding(c) { return lobArea(c.x, c.y)[Math.floor(Math.random() * 9)]; }
+function torchTiles(u, from) {
+  from = from || u; const res = [];
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    if (blocksLOS(x, y) || Math.hypot(x - from.x, y - from.y) > ABIL.torch.range + 0.01) continue;
+    if (!hasLOS(from, { x, y })) continue;
+    res.push({ x, y });
+  }
+  return res;
+}
 function lobArea(cx, cy) { const r = []; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) r.push({ x: cx + dx, y: cy + dy }); return r; }
 function aoeTiles(u) {
   const A = ABIL.inferno; const res = [];
@@ -498,6 +511,7 @@ async function doAttack(att, tgt, id, opt = {}) {
     if (!tgt.dead && A.poison) { tgt.st.poison = 3; FX.float(tgt.x, tgt.y, 'ОТРАВЛЕН', '#9dff6a', 0.9); }
     if (!tgt.dead && A.bleed) { tgt.st.bleed = 3; FX.float(tgt.x, tgt.y, 'КРОВОТЕЧЕНИЕ', '#ff4d5e', 0.9); }
   }
+  if (A.flare) { const ft = tile(tgt.x, tgt.y); if (ft) { ft.torch = 4; FX.burst('ignite', tgt.x, tgt.y, att.side); refreshLight(); R.groundDirty = true; } }
   if (A.melee) await tween(0.16, f => { att.anim.lunge = 1 - f; });
   att.anim.lunge = 0;
   void fromConcealed;
@@ -567,7 +581,7 @@ async function useAbility(u, id, target) {
   try {
     switch (id) {
       case 'cleave': case 'shot': case 'pierce': case 'bolt': case 'backstab': case 'knife': case 'smite':
-      case 'heavybolt': case 'hack': case 'bite': case 'rend': case 'boneblade': case 'poisonarrow': case 'smash': case 'hook':
+      case 'flare': case 'heavybolt': case 'hack': case 'bite': case 'rend': case 'boneblade': case 'poisonarrow': case 'smash': case 'hook':
         await doAttack(u, target, id); break;
       case 'reload':
         u.loaded = true; FX.float(u.x, u.y, 'ЗАРЯЖЕН', '#e8d6a0', 0.9); SFX.play('shield');
@@ -591,6 +605,14 @@ async function useAbility(u, id, target) {
         u.anim.cast = 0; refreshLight(); await wait(300); break;
       }
       case 'lob': await castLob(u, target); break;
+      case 'torch': {
+        faceTo(u, target.x, target.y); u.anim.cast = 1;
+        await FX.projectile(u, target, 'fireball', 'order', null); u.anim.cast = 0;
+        tile(target.x, target.y).torch = 4;
+        FX.burst('ignite', target.x, target.y, u.side); SFX.play('ignite');
+        log(`${uName(u)} бросает священный факел.`, u.side);
+        refreshLight(); R.groundDirty = true; await wait(250); break;
+      }
       case 'bulwark':
         u.st.bulwark = true; FX.burst('shield', u.x, u.y, u.side); SFX.play('shield');
         FX.float(u.x, u.y, 'БАСТИОН', '#e8d6a0', 1);
@@ -728,7 +750,7 @@ async function startTurn(side) {
   if (G.dawn > 0) G.dawn--;
   if (G.eclipse > 0) G.eclipse--;
   // тление огня
-  for (const row of G.map) for (const t of row) if (t.burn > 0) t.burn--;
+  for (const row of G.map) for (const t of row) { if (t.burn > 0) t.burn--; if (t.torch > 0) t.torch--; }
   R.groundDirty = true;
   refreshLight();
   for (const u of alive(side)) {
@@ -820,6 +842,7 @@ function declare(w, reason) {
   if (G.winner) return;
   G.winner = w; G.winReason = reason; G.mode = null;
   const gid = G.gameId;
+  if (G.onEnd) { const f = G.onEnd; G.onEnd = null; f(); return; }
   setTimeout(() => { if (G.gameId === gid && G.winner) UI.showEnd(); }, 1600);
 }
 

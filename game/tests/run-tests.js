@@ -510,6 +510,26 @@ const TESTS = [
     if (G.res.coven !== 4) return 'герой Ковена на свету должен отнять 1, ресурс ' + G.res.coven;
     return null;
   }],
+  ['Особые умения Ордена: факел только у Капеллана, осветительный болт только у Охотницы на ведьм', async () => {
+    const [p, m, b, e] = T.setup({ units: [['order', 'priest', 2, 2], ['order', 'marksman', 3, 2], ['order', 'bastion', 4, 2], ['coven', 'bastion', 3, 8]] });
+    if (!abilitiesOf(p).includes('torch')) return 'у Капеллана нет факела';
+    if (abilitiesOf(b).includes('torch') || abilitiesOf(m).includes('torch')) return 'факел есть у других героев';
+    if (!abilitiesOf(m).includes('flare')) return 'у Охотницы на ведьм нет осветительного болта';
+    const cm = GAME.G.units.find(u => u.side === 'coven' && u.cls === 'priest');
+    if (cm && abilitiesOf(cm).includes('torch')) return 'факел у Ковена';
+    if (isLit(3, 8)) return 'цель заранее на свету';
+    if (calcAttack(m, e, 'flare').darkMiss !== 0) return 'осветительный болт страдает от тьмы';
+    const r0 = GAME.G.res.order;
+    const undo = T.rigConst(0.01); try { await useAbility(m, 'flare', e); } finally { undo(); }
+    if (GAME.G.res.order !== r0 - 2) return 'не списано 2 Веры';
+    if (!isLit(3, 8) || !isLit(3, 9)) return 'клетка цели не осветилась';
+    if (calcAttack(b, e, 'cleave', { from: { x: 3, y: 7 } }).darkMiss !== 0) return 'союзники всё ещё промахиваются из-за тьмы';
+    p.ap = 3; await useAbility(p, 'torch', { x: 10, y: 10 });
+    if (!isLit(10, 10) || !isLit(11, 11)) return 'факел не светит';
+    for (let i = 0; i < 4; i++) await startTurn(i % 2 ? 'order' : 'coven');
+    if (isLit(10, 10)) return 'факел горит дольше 2 раундов';
+    return null;
+  }],
 ];
 
 (async () => {
