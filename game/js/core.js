@@ -499,7 +499,7 @@ async function doAttack(att, tgt, id, opt = {}) {
 async function damageUnit(u, dmg, src, kind) {
   if (u.dead || dmg <= 0) return;
   u.hp -= dmg; u.anim.flash = 0.3; u.anim.hurt = 1;
-  if (src) G.stats[src.side].dmg += dmg;
+  if (src) { G.stats[src.side].dmg += dmg; src.dmgDone = (src.dmgDone || 0) + Math.min(dmg, Math.max(0, u.hp + dmg)); }
   FX.float(u.x, u.y, '−' + dmg, kind === 'crit' ? '#ff3b2f' : kind === 'fire' ? '#ff9d3a' : '#ff6b5e', kind === 'crit' ? 2.0 : 1.5, 0);
   FX.blood(u.x, u.y, u.side, dmg);
   if (kind !== 'fire') FX.shake(3 + dmg * 0.6);
