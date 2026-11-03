@@ -80,13 +80,13 @@ const CLASSES = {
 //         revive — раз за бой встаёт с 50% ОЗ; evade — 30% увернуться от дальних атак;
 //         rage — ярость от ран; construct — без крови и без Кровавой цены; lantern — несёт свет.
 Object.assign(CLASSES, {
-  crossbow: { merc: true, hp: 12, mov: 3, aim: 70, def: 0, crit: 5, armor: 1, role: 'Наёмник · стрелок',
+  crossbow: { merc: true, hp: 12, mov: 3, aim: 75, def: 0, crit: 5, armor: 1, role: 'Наёмник · стрелок',
     names: { order: 'Арбалетчик', coven: 'Арбалетчик' }, abil: ['heavybolt', 'reload'], traits: [],
     desc: 'Медленный, бронированный. Тяжёлый болт пробивает броню, но после выстрела нужна перезарядка.' },
   berserk: { merc: true, hp: 14, mov: 6, aim: 65, def: 5, crit: 10, armor: 0, role: 'Наёмник · рубака',
     names: { order: 'Берсерк', coven: 'Берсерк' }, abil: ['hack'], traits: ['rage'],
     desc: 'Быстрый и почти без брони. Каждая рана добавляет ярости: +1 к урону (до +4) на весь бой.' },
-  wolf: { merc: true, hp: 9, mov: 7, aim: 70, def: 10, crit: 10, armor: 0, role: 'Зверь',
+  wolf: { merc: true, hp: 10, mov: 7, aim: 70, def: 15, crit: 10, armor: 0, role: 'Зверь',
     names: { order: 'Волк', coven: 'Волк' }, abil: ['bite', 'rend'], traits: ['evade', 'construct'],
     desc: 'Звериные рефлексы: 30% увернуться от любой дальней атаки. Мало ОЗ. «Рваная рана» вызывает кровотечение.' },
   skelwar: { merc: true, hp: 10, mov: 4, aim: 60, def: 0, crit: 5, armor: 0, role: 'Нежить · воин',
@@ -101,7 +101,7 @@ Object.assign(CLASSES, {
   catapult: { merc: true, hp: 14, mov: 0, aim: 100, def: 0, crit: 0, armor: 2, role: 'Осадное орудие',
     names: { order: 'Катапульта', coven: 'Катапульта' }, abil: ['lob'], traits: ['construct'],
     desc: 'Не двигается. За ресурс фракции мечет ядро: целитесь в клетку — ядро падает в случайную из 9 клеток квадрата 3×3 вокруг неё.' },
-  lantern: { merc: true, hp: 12, mov: 4, aim: 65, def: 5, crit: 5, armor: 0, role: 'Наёмник · фонарщик',
+  lantern: { merc: true, hp: 13, mov: 4, aim: 65, def: 10, crit: 5, armor: 0, role: 'Наёмник · фонарщик',
     names: { order: 'Фонарщик', coven: 'Фонарщик' }, abil: ['hook', 'flash', 'shutter'], traits: ['lantern'],
     desc: 'Несёт фонарь — личный свет радиусом 2. «Вспышка» ослепляет врагов рядом и срывает с них сокрытие. Фонарь можно прикрыть.' },
 });
@@ -139,7 +139,7 @@ const ABIL = {
     icon: 'pierce', proj: 'arrow', desc: '+15 к меткости. Укрытие цели ослаблено на ступень (полное → половинное → нет).' },
   watch: { name: 'Бдение', ap: 1, apAll: true, type: 'self', icon: 'eye',
     desc: 'Тратит все ОД. Выстрел (−10) по врагу, что двигается в зоне видимости. При 3 ОД — два выстрела.' },
-  bolt: { name: { order: 'Искра', coven: 'Теневой разряд' }, ap: 2, type: 'attack', range: 8, dmg: [3, 4], aim: 5,
+  bolt: { name: { order: 'Искра', coven: 'Теневой разряд' }, ap: 2, type: 'attack', range: 8, dmg: [3, 5], aim: 5,
     magic: true, ignoreDark: true, icon: 'bolt', proj: 'orb', desc: 'Магический снаряд. Не страдает от тьмы.' },
   inferno: { name: { order: 'Огненный вал', coven: 'Чёрное пламя' }, ap: 3, res: 3, type: 'aoe', range: 7, radius: 1.5,
     dmg: [3, 5], icon: 'fire', desc: 'Площадь. Бьёт всех (и своих!), крушит половинные укрытия и повреждает стены, поджигает землю на 2 раунда. Пламя Ордена даёт свет; пламя Ковена гасит свет, а враги Ковена, стреляющие из него, получают −10 к меткости.' },
