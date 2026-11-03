@@ -64,18 +64,18 @@ const TESTS = [
     return null;
   }],
   ['Тьма: единственный эффект — 15% промаха по цели во тьме без ночного зрения', async () => {
-    const [ma, t, cm, sk, gl] = T.setup({ units: [['order', 'marksman', 2, 2], ['coven', 'bastion', 6, 2], ['coven', 'marksman', 6, 6], ['order', 'skelarch', 2, 6], ['order', 'golem', 3, 9]], objs: [['B', 12, 12]] });
-    const c = calcAttack(ma, t, 'shot');
+    const [ma, t, cm, sk, gl] = T.setup({ units: [['order', 'mystic', 2, 2], ['coven', 'bastion', 6, 2], ['coven', 'marksman', 6, 6], ['order', 'skelarch', 2, 6], ['order', 'golem', 3, 9]], objs: [['B', 12, 12]] });
+    const c = calcAttack(ma, t, 'bolt');
     if (c.darkMiss !== 0.15) return 'Орден по цели во тьме: шанс промаха ' + c.darkMiss;
-    if (c.br.some(b => /тьм|свет/i.test(b[0]))) return 'в расчёте остались другие модификаторы тьмы/света: ' + JSON.stringify(c.br);
+    if (c.br.some(b => /тьм/i.test(b[0]))) return 'в расчёте остались другие модификаторы тьмы/света: ' + JSON.stringify(c.br);
     if (calcAttack(cm, ma, 'shot').darkMiss !== 0) return 'герой Ковена страдает от тьмы';
     if (calcAttack(sk, t, 'poisonarrow').darkMiss !== 0) return 'нежить страдает от тьмы';
     if (calcAttack(gl, t, 'smash', { from: { x: 5, y: 2 } }).darkMiss !== 0) return 'голем страдает от тьмы';
     t.x = 11; t.y = 12; refreshLight();
-    if (calcAttack(ma, t, 'shot').darkMiss !== 0) return 'промах тьмы по цели на свету';
+    if (calcAttack(ma, t, 'bolt').darkMiss !== 0) return 'промах тьмы по цели на свету';
     // статистика: доля «скрыт тьмой» среди попавших бросков ≈ 15%
     t.x = 6; t.y = 2; refreshLight(); let dark = 0, landed = 0;
-    for (let i = 0; i < 300; i++) { t.hp = 99; t.dead = false; const o = await doAttack(ma, t, 'shot'); if (o === 'dark') dark++; if (o !== 'miss') landed++; }
+    for (let i = 0; i < 300; i++) { t.hp = 99; t.dead = false; const o = await doAttack(ma, t, 'bolt'); if (o === 'dark') dark++; if (o !== 'miss') landed++; }
     const r = dark / landed; if (r < 0.08 || r > 0.23) return 'доля промахов из-за тьмы ' + r.toFixed(2);
     return null;
   }],
@@ -515,13 +515,15 @@ const TESTS = [
     if (!abilitiesOf(p).includes('torch')) return 'у Капеллана нет факела';
     if (abilitiesOf(b).includes('torch') || abilitiesOf(m).includes('torch')) return 'факел есть у других героев';
     if (!abilitiesOf(m).includes('flare')) return 'у Охотницы на ведьм нет осветительного болта';
+    if (!nightVision(m)) return 'Охотница на ведьм не видит во тьме';
+    if (nightVision(b)) return 'Храмовник видит во тьме';
     const cm = GAME.G.units.find(u => u.side === 'coven' && u.cls === 'priest');
     if (cm && abilitiesOf(cm).includes('torch')) return 'факел у Ковена';
     if (isLit(3, 8)) return 'цель заранее на свету';
     if (calcAttack(m, e, 'flare').darkMiss !== 0) return 'осветительный болт страдает от тьмы';
     const r0 = GAME.G.res.order;
     const undo = T.rigConst(0.01); try { await useAbility(m, 'flare', e); } finally { undo(); }
-    if (GAME.G.res.order !== r0 - 2) return 'не списано 2 Веры';
+    if (GAME.G.res.order !== r0 - ABIL.flare.res) return 'не списана Вера';
     if (!isLit(3, 8) || !isLit(3, 9)) return 'клетка цели не осветилась';
     if (calcAttack(b, e, 'cleave', { from: { x: 3, y: 7 } }).darkMiss !== 0) return 'союзники всё ещё промахиваются из-за тьмы';
     p.ap = 3; await useAbility(p, 'torch', { x: 10, y: 10 });

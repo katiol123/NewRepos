@@ -172,7 +172,7 @@ AI.bestAction = function (u, P, ap) {
   for (const id of abilitiesOf(virt)) {
     const A = ABIL[id];
     if (abCost(u, id) > ap || (A.apAll && ap < 1)) continue;
-    if (A.res && G.res[u.side] < A.res) continue;
+    if (A.res && G.res[u.side] < resCost(u, id)) continue;
     if (A.needsLoad && !u.loaded) continue;
     const ty = abType(id, u.side);
     if (ty === 'attack') {
@@ -208,8 +208,9 @@ AI.bestAction = function (u, P, ap) {
         if (A.armorPierce && e.armor) v += e.armor * 0.8;
         if (A.flare) {   // осветить врага выгодно, если он во тьме и рядом есть наши без ночного зрения
           const blindAllies = alive(u.side).filter(a => a !== u && !nightVision(a) && Math.hypot(a.x - e.x, a.y - e.y) <= 8).length;
-          v += (!isLit(e.x, e.y) ? 0.6 + Math.min(3, blindAllies) * 0.5 : -1) - A.res * 0.6;
+          v += (!isLit(e.x, e.y) ? 0.8 + Math.min(3, blindAllies) * 0.6 : -1) - A.res * 0.5;
           if (e.st.concealed) v += 1;
+          v += Math.min(3, alive(u.side).filter(a => a !== u && a.ap >= 2 && attackIds(a).length).length) * 0.5;   // метка поможет тем, кто ещё ходит
         }
         if (id === 'pierce' && ap < 3) continue;
         consider(v, id, e);
@@ -309,6 +310,16 @@ AI.bestAction = function (u, P, ap) {
         const reserve = teamHurt && alive(u.side).some(a => profileOf(a).healer) && G.res[u.side] - ABIL.lob.res < 2 ? 1.2 : 0;
         consider(v * 1.6 - 0.6 - reserve, id, { x: e.x, y: e.y });
       }
+    } else if (id === 'radiance') {
+      if (u.st.radiant) continue;
+      let v = -0.6;   // цена: 1 Вера
+      for (const a of alive(u.side)) { const pos = a === u ? P : a; if (CLASSES[a.cls].faction && Math.hypot(pos.x - P.x, pos.y - P.y) <= 2 && !isLit(pos.x, pos.y)) v += 1.0; }
+      for (const e of alive(foe(u.side))) if (!e.st.concealed && Math.hypot(e.x - P.x, e.y - P.y) <= 2.5 && !isLit(e.x, e.y)) v += 0.6;
+      if (v > 0) consider(v, id, null);
+    } else if (id === 'litany') {
+      if (u.litanyUsed || G.res[u.side] >= RES_MAX) continue;
+      // ценнее, когда ресурса мало и есть на что его тратить
+      consider(1.6 + (G.res[u.side] < 3 ? 1.2 : 0) + (G.res[u.side] + 2 >= FACTIONS[u.side].ult.cost && G.res[u.side] < FACTIONS[u.side].ult.cost ? 1 : 0), id, null);
     } else if (id === 'torch') {
       // факел окупается, если осветит своих героев (доход) и врагов без защиты тьмы
       const heroes = alive(u.side).filter(a => CLASSES[a.cls].faction);

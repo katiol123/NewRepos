@@ -275,6 +275,7 @@ UI.unitPanel = function () {
   st.push(`Мет. ${u.aim}`, `Защ. ${u.def}`, `Шаг ${effMov(u)}${effMov(u) < u.mov ? '↓' : ''}`);
   if (u.armor) st.push(`Броня ${u.armor}`);
   for (const tr of CLASSES[u.cls].traits || []) { const n = TRAIT_NAMES[tr]; if (n) st.push(`<b class="s-gold">${n}</b>`); }
+  if (u.side === 'order' && CLASSES[u.cls].orderSight) st.push('<b class="s-gold">Глаза инквизитора: видит во тьме</b>');
   if (u.rage) st.push(`<b class="s-red">Ярость +${u.rage}</b>`);
   if (CLASSES[u.cls].abil.includes('heavybolt')) st.push(u.loaded ? '<b class="s-gold">заряжен</b>' : '<b class="s-red">разряжен</b>');
   if (u.st.poison > 0) st.push(`<b class="s-red">Яд ${u.st.poison}</b>`);
@@ -302,11 +303,11 @@ UI.unitPanel = function () {
     const b = document.createElement('button');
     b.className = 'ab' + (G.mode === id ? ' on' : '') + (chk.ok ? '' : ' off');
     const cost = A.apAll ? 'все ОД' : abCost(u, id) + ' ОД';
-    b.innerHTML = `<span class="ab-key">${i + 1}</span>${svgIcon(A.icon, 26)}<span class="ab-cost">${cost}${A.res ? ' · ' + A.res + '✦' : ''}</span>`;
+    b.innerHTML = `<span class="ab-key">${i + 1}</span>${svgIcon(A.icon, 26)}<span class="ab-cost">${cost}${A.res ? ' · ' + resCost(u, id) + '✦' : ''}</span>`;
     let extra = '';
     if (A.dmg) extra += `<br><span class="t-dim">Урон ${A.dmg[0]}–${A.dmg[1]}${A.range ? ' · дальность ' + A.range : ''}</span>`;
     else if (A.range) extra += `<br><span class="t-dim">Дальность ${A.range}</span>`;
-    if (A.res) extra += `<br><span class="t-dim">Стоит ${A.res} ${FACTIONS[u.side].res.toLowerCase()}</span>`;
+    if (A.res) extra += `<br><span class="t-dim">Стоит ${resCost(u, id)} ${FACTIONS[u.side].res.toLowerCase()}</span>`;
     b.dataset.tip = `<b>${abName(id, u.side)}</b> <span class="t-dim">(${cost})</span><br>${abDesc(id, u.side) || ''}${extra}${!chk.ok && chk.why ? `<br><span class="t-bad">${chk.why}</span>` : ''}`;
     b.onclick = () => UI.pickAbility(id);
     ab.appendChild(b);
