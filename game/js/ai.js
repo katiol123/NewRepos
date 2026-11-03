@@ -31,11 +31,11 @@ AI.considerUlt = function (side) {
     const hurt = mine.reduce((s, u) => s + Math.min(3, u.maxHp - u.hp), 0);
     const dark = theirs.filter(e => !isLit(e.x, e.y)).length;
     const conceal = theirs.some(e => e.st.concealed);
-    if (hurt >= 7 || conceal || G.res[side] >= 9 || (dark >= 4 && G.round >= 3)) useUlt(side);
+    if (hurt >= 7 || conceal || G.res[side] >= RES_MAX - 1 || (dark >= 4 && G.round >= 3)) useUlt(side);
   } else {
     const lit = mine.filter(u => isLit(u.x, u.y)).length;
     const litFoes = theirs.filter(e => isLit(e.x, e.y)).length;
-    if ((lit >= 2 && G.round >= 2) || litFoes >= 3 || G.res[side] >= 9) useUlt(side);
+    if ((lit >= 2 && G.round >= 2) || litFoes >= 3 || G.res[side] >= RES_MAX - 1) useUlt(side);
   }
 };
 
@@ -99,6 +99,8 @@ AI.pos = function (u, x, y) {
     if (enemies.some(e => !nightVision(e))) s += 0.4;
     if (p.stealth && u.side === 'coven') s += 1.4;
   } else if (p.stealth && u.side === 'coven') s -= 1.5;
+  // 5б. Ресурс фракции: герой на «своей» клетке приносит +1, на чужой отнимает 1
+  s += lightIncome(u, P) * 0.7 * (G.res[u.side] < RES_MAX ? 1 : 0.3);
   // 6. Дистанция до врага по роли (из дальности основной атаки)
   let pref = p.melee ? 1.2 : clamp(p.range - 2, 4, 9), wDist = p.melee ? (p.sturdy ? 0.45 : 0.35) : 0.3;
   if (p.support) { pref = 6; wDist = 0.25; }

@@ -496,6 +496,20 @@ const TESTS = [
     if (!UI.unitTip(c).includes('Характер') || UI.unitTip(o).includes('Характер')) return 'подсказка показывает характер не тем';
     return null;
   }],
+  ['Ресурс: герой на свету/во тьме в конце хода даёт ±1, наёмник — нет, попадания ничего не дают', async () => {
+    const [o1, o2, m, c1] = T.setup({ units: [['order', 'marksman', 5, 6], ['order', 'priest', 12, 12], ['order', 'wolf', 2, 2], ['coven', 'marksman', 5, 4]], objs: [['B', 5, 5]] });
+    const G = GAME.G; G.res.order = 5; G.res.coven = 5;
+    if (!isLit(5, 6) || isLit(12, 12)) return 'неверная подготовка света';
+    const undo = T.rigConst(0.01); try { await doAttack(o1, c1, 'shot'); } finally { undo(); }
+    if (G.res.order !== 5) return 'попадание дало ресурс';
+    G.side = 'order'; G.control = { order: 'human', coven: 'human' }; endTurn();
+    if (G.res.order !== 5) return 'Орден: свет +1 и тьма −1 должны дать 0, а ресурс ' + G.res.order;
+    o2.x = 6; o2.y = 6; G.side = 'order'; endTurn();
+    if (G.res.order !== 7) return 'два героя на свету должны дать +2, ресурс ' + G.res.order;
+    G.side = 'coven'; c1.x = 5; c1.y = 4; endTurn();
+    if (G.res.coven !== 4) return 'герой Ковена на свету должен отнять 1, ресурс ' + G.res.coven;
+    return null;
+  }],
 ];
 
 (async () => {

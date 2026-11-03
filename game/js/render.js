@@ -1244,9 +1244,9 @@ R.drawHighlights = function (c, time) {
     const lit = isLit(h.x, h.y);
     const fz = 14 / R.cam.z;
     c.font = `700 ${fz}px "Cormorant Garamond", Georgia, serif`; c.textAlign = 'center';
-    c.fillStyle = 'rgba(0,0,0,0.78)'; c.fillRect(pe.x - fz * 3.6, pe.y + 9, fz * 7.2, fz * 1.3);
+    c.fillStyle = 'rgba(0,0,0,0.78)'; c.fillRect(pe.x - fz * 5.6, pe.y + 9, fz * 11.2, fz * 1.3);
     c.fillStyle = lit ? '#ffd27a' : '#b9a6ff';
-    c.fillText(`${a} ОД · ${lit ? 'свет' : 'тьма'}`, pe.x, pe.y + 9 + fz);
+    const inc = lightIncome(u, h); c.fillText(`${a} ОД · ${lit ? 'свет' : 'тьма'}${inc ? (inc > 0 ? ' · +1 ' : ' · −1 ') + FACTIONS[u.side].res : ''}`, pe.x, pe.y + 9 + fz);
     // предупреждение Бдения
     const watchers = alive(foe(u.side)).filter(w => w.st.watch > 0 && path.some(s => dist(w, s) <= 11 && hasLOS(w, s)));
     if (watchers.length && !u.st.concealed) { c.fillStyle = '#ffe08a'; c.fillText('⚠ под Бдением', pe.x, pe.y + 12 + fz * 2.3); }

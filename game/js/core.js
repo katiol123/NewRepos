@@ -96,8 +96,9 @@ function newGame(mode, rosters) {
   G.round = 1; G.side = 'order'; G.res = { order: 2, coven: 4 }; G.altar = { order: 0, coven: 0 };
   G.dawn = 0; G.eclipse = 0; G.ultRound = { order: -9, coven: -9 };
   G.first = G.forceFirst || (Math.random() < 0.5 ? 'order' : 'coven');
-  G.side = G.first; G.res = { order: 3, coven: 3 }; G.res[foe(G.first)] = 4; G.res[G.first] = 2; G.busy = false; G.winner = null; G.winReason = ''; G.sel = null; G.mode = null; G.turnCount = 0;
+  G.side = G.first; G.res = { order: 3, coven: 3 }; G.res[foe(G.first)] = 4; G.res[G.first] = 3; G.busy = false; G.winner = null; G.winReason = ''; G.sel = null; G.mode = null; G.turnCount = 0;
   G.stats = { order: { dmg: 0, kills: 0, shots: 0, hits: 0 }, coven: { dmg: 0, kills: 0, shots: 0, hits: 0 } };
+  G.econ = { order: { turns: 0, atMax: 0, resSum: 0, skills: 0, ults: 0 }, coven: { turns: 0, atMax: 0, resSum: 0, skills: 0, ults: 0 } };
   G.spectator = mode === 'spectator';
   G.control = { order: mode === 'order' ? 'human' : 'ai', coven: mode === 'coven' ? 'human' : 'ai' };
   G.log = [];
@@ -493,7 +494,6 @@ async function doAttack(att, tgt, id, opt = {}) {
     if (outcome === 'graze') FX.float(tgt.x, tgt.y, 'ЗАДЕЛ', '#d9c49a', 0.85);
     const word = outcome === 'crit' ? '<b class="crit">крит</b>' : outcome === 'graze' ? 'задевает' : 'попадание';
     log(`${uName(att)} → ${uName(tgt)}: ${word},&nbsp;<span class="nw">−${dmg} (${calc.hit}%)</span>${notes.length ? ' <span class="t-dim">[' + notes.join(', ') + ']</span>' : ''}.`, att.side);
-    gainRes(att.side, 1);
     await damageUnit(tgt, dmg, att, outcome);
     if (!tgt.dead && A.poison) { tgt.st.poison = 3; FX.float(tgt.x, tgt.y, 'ОТРАВЛЕН', '#9dff6a', 0.9); }
     if (!tgt.dead && A.bleed) { tgt.st.bleed = 3; FX.float(tgt.x, tgt.y, 'КРОВОТЕЧЕНИЕ', '#ff4d5e', 0.9); }
@@ -530,7 +530,7 @@ async function killUnit(u, src) {
   FX.shake(12);
   SFX.play('death');
   const other = foe(u.side);
-  gainRes(other, 2);
+  gainRes(other, 1);
   if (src) { src.kills++; G.stats[src.side].kills++; }
   log(`☠ ${uName(u)} пал${src ? ' от руки ' + uName(src) : ''}.`, other);
   if (G.sel === u) G.sel = null;
@@ -563,7 +563,7 @@ async function useAbility(u, id, target) {
   G.busy = true; G.mode = null; UI.tip(null);
   const apCost = A.apAll ? u.ap : abCost(u, id);
   u.ap -= apCost;
-  if (A.res) gainRes(u.side, -A.res);
+  if (A.res) { gainRes(u.side, -A.res); if (G.econ) G.econ[u.side].skills += A.res; }
   try {
     switch (id) {
       case 'cleave': case 'shot': case 'pierce': case 'bolt': case 'backstab': case 'knife': case 'smite':
@@ -587,7 +587,7 @@ async function useAbility(u, id, target) {
         u.anim.cast = 1; FX.explosion(u.x, u.y, 'coven'); FX.shake(16); SFX.play('boom');
         log(`${uName(u)} бьёт оземь — Землетрясение!`, u.side);
         for (const [dx, dy] of DIRS8) { const t = tile(u.x + dx, u.y + dy); if (t && t.obj && OBJ[t.obj].cover === 20) await damageObject(t.x, t.y, 4); }
-        for (const v of quakeVictims(u)) { const d = irnd(3, 5); if (v.side !== u.side) gainRes(u.side, 1); await damageUnit(v, d, v.side !== u.side ? u : null, 'hit'); }
+        for (const v of quakeVictims(u)) { const d = irnd(3, 5); await damageUnit(v, d, v.side !== u.side ? u : null, 'hit'); }
         u.anim.cast = 0; refreshLight(); await wait(300); break;
       }
       case 'lob': await castLob(u, target); break;
@@ -664,7 +664,7 @@ async function castLob(u, c) {
       if (v.armor) d = Math.max(1, d - v.armor);
       if (hasTrait(v, 'undead')) d = Math.max(1, Math.floor(d / 2));
       if (hasTrait(v, 'evade') && Math.random() < 0.3) { FX.float(v.x, v.y, 'УВЕРНУЛСЯ', '#c8f0ff', 1); log(`${uName(v)} отскочил от ядра.`, v.side); }
-      else { if (v.side !== u.side) gainRes(u.side, 1); await damageUnit(v, d, v.side !== u.side ? u : null, 'hit'); }
+      else { await damageUnit(v, d, v.side !== u.side ? u : null, 'hit'); }
     }
   }
   refreshLight(); R.groundDirty = true;
@@ -688,7 +688,7 @@ async function castInferno(u, c) {
   R.groundDirty = true;
   for (const p of area) {
     const v = unitAt(p.x, p.y);
-    if (v) { const d = irnd(ABIL.inferno.dmg[0], ABIL.inferno.dmg[1]); if (v.side !== u.side) gainRes(u.side, 1); await damageUnit(v, d, v.side !== u.side ? u : null, 'fire'); }
+    if (v) { const d = irnd(ABIL.inferno.dmg[0], ABIL.inferno.dmg[1]); await damageUnit(v, d, v.side !== u.side ? u : null, 'fire'); }
   }
   await wait(300);
 }
@@ -701,7 +701,7 @@ async function useUlt(side) {
   if (G.busy || G.winner || G.side !== side) return;
   const F = FACTIONS[side]; if (!ultReady(side)) return;
   G.ultRound[side] = G.round;
-  G.busy = true; UI.tip(null); gainRes(side, -F.ult.cost);
+  G.busy = true; UI.tip(null); gainRes(side, -F.ult.cost); if (G.econ) G.econ[side].ults++;
   try {
     UI.ultFlash(side);
     if (side === 'order') {
@@ -742,12 +742,12 @@ async function startTurn(side) {
   const theirsVisible = alive(foe(side)).some(u => !u.st.concealed && u.x >= 6 && u.x <= 9 && u.y >= 6 && u.y <= 9);
   if (mine && theirs && !theirsVisible && G.round >= 2) log('Алтарь молчит — рядом чьё-то незримое присутствие…', side);
   if (mine && !theirs && G.round >= 2) {
-    G.altar[side]++; gainRes(side, 2);
+    G.altar[side]++; gainRes(side, 1);
     altarMsg = `Алтарь: ${G.altar[side]}/${ALTAR_WIN}`;
     log(`Алтарь откликается ${FACTIONS[side].gen} (${G.altar[side]}/${ALTAR_WIN}).`, side);
     FX.altarPulse(side);
   }
-  gainRes(side, 1);
+  if (G.econ) { const E = G.econ[side]; E.turns++; E.resSum += G.res[side]; if (G.res[side] >= RES_MAX) E.atMax++; }
   UI.refresh();
   await UI.banner(side, altarMsg);
   if (G.gameId !== gid) return;
@@ -770,8 +770,25 @@ async function startTurn(side) {
   }
 }
 
+// Свет и тьма питают веру: герой Ордена, закончивший ход на свету, даёт +1, во тьме — −1. У Ковена наоборот.
+// Наёмники на ресурс не влияют.
+function lightIncome(u, pos) {
+  if (!CLASSES[u.cls].faction) return 0;
+  pos = pos || u;
+  const lit = isLit(pos.x, pos.y);
+  return u.side === 'order' ? (lit ? 1 : -1) : (lit ? -1 : 1);
+}
 function endTurn() {
   if (G.winner) return;
+  {
+    let plus = 0, minus = 0;
+    for (const u of alive(G.side)) {
+      const d = lightIncome(u); if (!d) continue;
+      if (d > 0) plus++; else minus++;
+      FX.float(u.x, u.y, (d > 0 ? '+1 ' : '−1 ') + FACTIONS[u.side].res, d > 0 ? '#ffe08a' : '#b9a6ff', 0.8, 30);
+    }
+    if (plus || minus) { gainRes(G.side, plus - minus); log(`${FACTIONS[G.side].res}: +${plus} / −${minus} за свет и тьму (итого ${plus - minus >= 0 ? '+' : ''}${plus - minus}).`, G.side); }
+  }
   // нельзя затаиться вплотную к врагу
   for (const u of alive(G.side)) if (u.st.concealed && alive(foe(u.side)).some(e => Math.max(Math.abs(e.x - u.x), Math.abs(e.y - u.y)) <= 1)) reveal(u, 'не удалось затаиться вплотную к врагу');
   for (const u of alive(G.side)) { u.guard = Math.min(u.ap, MAX_AP) * GUARD_PER_AP; if (u.guard) FX.float(u.x, u.y, 'Стойкость +' + u.guard, '#9fc4ff', 0.75); u.ap = 0; }
