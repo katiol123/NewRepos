@@ -132,6 +132,8 @@ AI.bestAction = function (u, P, ap) {
         if (A.phys && !A.armorPierce) avg = Math.max(1, avg - e.armor);
         if (A.phys && !A.melee && hasTrait(e, 'undead')) avg = Math.max(1, avg / 2);
         if (!A.melee && hasTrait(e, 'evade')) avg *= 0.7;
+        if (A.poison && !(e.st.poison > 0)) avg += 2.5;
+        if (A.bleed && !(e.st.bleed > 0)) avg += 4;
         const pk = c.hit / 100;
         const exp = pk * avg * (1 + c.crit / 200);
         const killP = A.dmg[1] * (c.crit > 30 ? 1.5 : 1) >= e.hp ? pk * clamp((A.dmg[1] * (1 + c.crit / 100) - e.hp + 1) / (A.dmg[1] - A.dmg[0] + 1), 0.15, 1) : 0;
